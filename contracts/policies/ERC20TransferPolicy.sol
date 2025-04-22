@@ -26,18 +26,15 @@ contract ERC20TransferPolicy is IPolicy {
     mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address recipient => bool))))
         private $recipients;
 
+    /**
+     * @notice Error indicating the transfer is invalid.
+     */
     error InvalidTransfer();
+
+    /**
+     * @notice Error indicating the caller is not authorized.
+     */
     error Unauthorized();
-
-    /**
-     * @notice Error indicating the caller is not authorized to call the `configure(...)`.
-     */
-    error UnauthorizedCaller();
-
-    /**
-     * @notice Error indicating the target address is invalid.
-     */
-    error InvalidTarget();
 
     /**
      * @notice Error indicating the selector is invalid.
@@ -48,16 +45,6 @@ contract ERC20TransferPolicy is IPolicy {
      * @notice Error indicating the operation is invalid.
      */
     error InvalidOperation();
-
-    /**
-     * @notice Error indicating the recipient is not configured.
-     */
-    error RecipientNotConfigured();
-
-    /**
-     * @notice Error indicating the recipient confirmation is pending.
-     */
-    error RecipientConfirmationPending();
 
     function checkTransaction(
         address safe,
