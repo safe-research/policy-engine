@@ -55,7 +55,7 @@ export async function execTransaction(
   gasPrice: bigint = 0n,
   gasToken: `0x${string}` = ZeroAddress,
   refundReceiver: `0x${string}` = ZeroAddress,
-  addtionalData: `0x${string}` = '0x',
+  additionalData: `0x${string}` = '0x',
   signingMethod: 'signMessage' | 'preApprovedSignature' = 'preApprovedSignature'
 ): Promise<TransactionResponse> {
   const nonce = BigInt(await safe.nonce())
@@ -99,10 +99,10 @@ export async function execTransaction(
     throw new Error('signing method not supported')
   }
 
-  if (addtionalData.length > 2) {
+  if (additionalData.length > 2) {
     signatureBytes = solidityPacked(
       ['bytes', 'bytes', 'uint256'],
-      [signatureBytes, addtionalData, (addtionalData.length - 2) / 2]
+      [signatureBytes, additionalData, (additionalData.length - 2) / 2]
     ) as `0x${string}`
   }
 
