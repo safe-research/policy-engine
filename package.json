@@ -1,0 +1,42 @@
+{
+  "name": "@cc0x-group/policy-engine",
+  "private": true,
+  "version": "0.0.0",
+  "license": "LGPL-3.0-only",
+  "scripts": {
+    "build": "hardhat compile",
+    "build:ts:typecheck": "tsc --noEmit",
+    "deploy": "hardhat deploy --network",
+    "lint": "npm run lint:sol && npm run lint:ts",
+    "lint:sol": "solhint 'contracts/**/*.sol' --max-warnings 0",
+    "lint:ts": "eslint",
+    "lint:fix": "npm run lint:fix:sol && npm run lint:fix:ts",
+    "lint:fix:sol": "prettier -w contracts/ && solhint 'contracts/**/*.sol' --fix --noPrompt",
+    "lint:fix:ts": "eslint --fix",
+    "test": "hardhat test --network hardhat",
+    "verify": "hardhat etherscan-verify --force-license --license LGPL-3.0 --network"
+  },
+  "dependencies": {
+    "hardhat-deploy": "^0.14.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.2.0",
+    "@safe-global/safe-singleton-factory": "^1.0.41",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.22.19",
+    "solhint": "^5.0.5",
+    "@eslint/js": "^9.20.0",
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+    "eslint": "^9.20.1",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-no-only-tests": "^3.3.0",
+    "eslint-plugin-prettier": "^5.2.3",
+    "prettier": "^3.5.0",
+    "prettier-plugin-solidity": "^1.4.2",
+    "solhint-plugin-prettier": "^0.1.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0"    
+  }
+}

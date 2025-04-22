@@ -1,0 +1,23 @@
+{
+  "plugins": ["prettier-plugin-solidity", "@trivago/prettier-plugin-sort-imports"],
+  "arrowParens": "always",
+  "printWidth": 120,
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "tabWidth": 2,
+  "overrides": [
+    {
+      "files": "*.sol",
+      "options": {
+        "parser": "solidity-parse",
+        "tabWidth": 4,
+        "singleQuote": false,
+        "bracketSpacing": false
+      }
+    }
+  ],
+  "importOrder": ["<THIRD_PARTY_MODULES>", "^[./]"],
+  "importOrderSeparation": true,
+  "importOrderParserPlugins": ["typescript", "decorators-legacy"]
+}

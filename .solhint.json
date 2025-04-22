@@ -1,0 +1,14 @@
+{
+  "extends": "solhint:recommended",
+  "plugins": ["prettier"],
+  "rules": {
+    "prettier/prettier": "error",
+    "max-line-length": ["error", 130],
+    "private-vars-leading-underscore": "error",
+    "immutable-vars-naming": ["error", { "immutablesAsConstants": true }],
+    "gas-custom-errors": "warn",
+    "no-unused-import": "error",
+    "compiler-version": ["error", "0.8.28"],
+    "func-visibility": ["warn", { "ignoreConstructors": true }]
+  }
+}
