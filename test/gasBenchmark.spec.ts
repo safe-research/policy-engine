@@ -260,8 +260,7 @@ describe('[@bench] Policies', () => {
     it('[CoSignerPolicy] ERC20 token transfer with 1:1 Safe', async () => {
       logSection('[CoSignerPolicy] ERC20 token transfer with 1:1 Safe')
 
-      const { safe, safeCosigner, alice, bob, charlie, owners, safePolicyGuard, coSignerPolicy, token } =
-        await setupTests()
+      const { safe, safeCosigner, bob, charlie, owners, safePolicyGuard, coSignerPolicy, token } = await setupTests()
 
       const to = await charlie.getAddress()
       const value = 0n
@@ -369,8 +368,7 @@ describe('[@bench] Policies', () => {
     it('[CoSignerPolicy] ERC20 token approve with 1:1 Safe', async () => {
       logSection('[CoSignerPolicy] ERC20 token approve with 1:1 Safe')
 
-      const { safe, safeCosigner, alice, bob, charlie, owners, safePolicyGuard, coSignerPolicy, token } =
-        await setupTests()
+      const { safe, safeCosigner, bob, charlie, owners, safePolicyGuard, coSignerPolicy, token } = await setupTests()
 
       const to = token.target
       const approvalReceipent = await charlie.getAddress()
