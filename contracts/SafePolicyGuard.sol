@@ -36,8 +36,6 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      */
     uint256 public immutable DELAY;
 
-    mapping(address safe => uint256 timestamp) public removeGuard;
-
     /**
      * @notice The pending policies root for a Safe.
      * @dev The mapping is structured as follows:
@@ -130,17 +128,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
             (selector == this.requestConfiguration.selector || selector == this.applyConfiguration.selector) &&
             operation == Operation.CALL;
 
-        // Set guard (here the intention is to remove the guard)
-        bool setGuard = to == safe &&
-            value == 0 &&
-            selector == ISafe.setGuard.selector &&
-            operation == Operation.DELEGATECALL &&
-            removeGuard[safe] > 0 &&
-            removeGuard[safe] <= block.timestamp;
-
-        if (setGuard) removeGuard[safe] = 0;
-
-        return requestOrApplyConfiguration || setGuard || invalidateRootCall;
+        return requestOrApplyConfiguration || invalidateRootCall;
     }
 
     /**
