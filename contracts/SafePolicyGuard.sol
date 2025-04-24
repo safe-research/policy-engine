@@ -6,7 +6,6 @@ import {IERC165} from "./interfaces/IERC165.sol";
 import {ISafeModuleGuard} from "./interfaces/ISafeModuleGuard.sol";
 import {ISafeTransactionGuard} from "./interfaces/ISafeTransactionGuard.sol";
 import {Operation} from "./interfaces/Operation.sol";
-import {ISafe} from "./interfaces/ISafe.sol";
 
 /**
  * @title Safe Policy Guard
@@ -15,24 +14,33 @@ import {ISafe} from "./interfaces/ISafe.sol";
 contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuard {
     using AccessSelector for AccessSelector.T;
 
-    // keccak256("guard_manager.guard.address")
-    bytes32 internal constant _GUARD_STORAGE_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
+    /**
+     * @notice The configuration data struct for a policy.
+     * @custom:member target The target address for the policy.
+     * @custom:member selector The selector for the policy.
+     * @custom:member operation The operation for the policy.
+     * @custom:member policy The policy address.
+     * @custom:member data The data for the policy.
+     */
+    struct Configuration {
+        address target;
+        bytes4 selector;
+        Operation operation;
+        address policy;
+        bytes data;
+    }
 
     /**
      * @notice The delay for the configuration change and guard removal.
      */
     uint256 public immutable DELAY;
 
-    mapping(address safe => uint256 timestamp) public removeGuard;
-
     /**
-     * @notice The pending policies for a Safe.
+     * @notice The pending policies root for a Safe.
      * @dev The mapping is structured as follows:
-     *      safe address where policy is pending => access data hash => timestamp when policy can be confirmed.
-     *      NOTE: This is not important for PolicyEngine, rather it is more important for the SafePolicyGuard.
-     *      So, this might be moved to the SafePolicyGuard later on.
+     *      safe address where policies are pending => configuration root => timestamp when policy can be confirmed.
      */
-    mapping(address safe => mapping(bytes32 accessDataHash => uint256 timestamp)) public pendingPolicies;
+    mapping(address => mapping(bytes32 => uint256)) public rootConfigured;
 
     // TODO(nlordell): The access control mechanism currently only checks transaction pre-conditions
     // and not post conditions. If we decide that post checks in policies are needed, we could use
@@ -40,31 +48,42 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     // impact on gas - although we can use things like transient storage to offset it a little.
     // Stack.T $afterExecutionChecks;
 
+    /**
+     * @notice Error indicating the root is already configured.
+     * @param root The root that is already configured.
+     */
+    error RootAlreadyConfigured(bytes32 root);
+
+    /**
+     * @notice Error indicating non zero gas price is not allowed.
+     */
     error NonZeroGasPrice();
 
     /**
-     * @notice Error indicating there is no pending policy for the given access selector.
+     * @notice Error indicating the root is not configured.
+     * @param root The root that is not configured.
      */
-    error NoPendingPolicy();
+    error RootNotConfigured(bytes32 root);
 
     /**
-     * @notice Error indicating the policy confirmation is pending.
+     * @notice Error indicating the policy root configuration is pending.
      */
-    error PolicyConfirmationPending();
+    error RootConfigurationPending();
 
     /**
-     * @notice Error indicating the guard is already set.
+     * @notice Emitted when a policy root is configured.
+     * @param safe The address of the Safe.
+     * @param root The root is a hash of the policy configurations.
+     * @param timestamp The timestamp when the policy can be confirmed.
      */
-    error GuardAlreadySet(address guard);
+    event RootConfigured(address indexed safe, bytes32 indexed root, uint256 timestamp);
 
-    event PolicyConfigured(
-        address indexed safe,
-        address indexed target,
-        bytes4 selector,
-        Operation operation,
-        address policy,
-        bytes data
-    );
+    /**
+     * @notice Emitted when a policy root is invalidated.
+     * @param safe The address of the Safe.
+     * @param root The root is a hash of the policy configurations.
+     */
+    event RootInvalidated(address indexed safe, bytes32 indexed root);
 
     /**
      * @param delay The delay for the configuration change.
@@ -83,16 +102,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
             interfaceId == type(IERC165).interfaceId; // 0x01ffc9a7
     }
 
-    function scheduleGuardRemoval() external {
-        removeGuard[msg.sender] = DELAY + block.timestamp;
-    }
-
     /**
      * @dev TODO: Consider the security considerations of calling `checkTransaction` as a Safe transaction,
      *      this can matter because the Safe can potentially modify state and might lead to unexpected interactions.
      */
     function _allowedCalls(
-        address safe,
         address to,
         uint256 value,
         bytes calldata data,
@@ -100,29 +114,19 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     ) internal returns (bool) {
         bytes4 selector = _decodeSelector(data);
 
+        // Invalidate Root
+        bool invalidateRootCall = to == address(this) &&
+            value == 0 &&
+            selector == this.invalidateRoot.selector &&
+            operation == Operation.CALL;
+
         // Configure or confirm policy
-        bool configureOrConfirmPolicy = to == address(this) &&
+        bool requestOrApplyConfiguration = to == address(this) &&
             value == 0 &&
-            (selector == this.configurePolicy.selector || selector == this.confirmPolicy.selector) &&
+            (selector == this.requestConfiguration.selector || selector == this.applyConfiguration.selector) &&
             operation == Operation.CALL;
 
-        // Schedule guard removal
-        bool guardRemovalScheduled = to == address(this) &&
-            value == 0 &&
-            selector == this.scheduleGuardRemoval.selector &&
-            operation == Operation.CALL;
-
-        // Set guard (here the intention is to remove the guard)
-        bool setGuard = to == safe &&
-            value == 0 &&
-            selector == ISafe.setGuard.selector &&
-            operation == Operation.DELEGATECALL &&
-            removeGuard[safe] > 0 &&
-            removeGuard[safe] <= block.timestamp;
-
-        if (setGuard) removeGuard[safe] = 0;
-
-        return configureOrConfirmPolicy || setGuard || guardRemovalScheduled;
+        return requestOrApplyConfiguration || invalidateRootCall;
     }
 
     /**
@@ -147,7 +151,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // control system.
         require(gasPrice == 0, NonZeroGasPrice());
 
-        if (_allowedCalls(msg.sender, to, value, data, operation)) {
+        if (_allowedCalls(to, value, data, operation)) {
             return;
         }
 
@@ -209,80 +213,69 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     }
 
     /**
-     * @notice Configures and confirms a policy for a specific access selector immediately if no guard is set.
-     * @param target The target address.
-     * @param selector The function selector.
-     * @param operation The operation type (CALL or DELEGATECALL).
-     * @param policy The policy address.
-     * @param data The call data for the policy to be called at confirmation.
-     * @dev This has to be called by the Safe owner.
-     *      This could also be used to reconfigure and disable a policy as well.
+     * @notice Configures and confirms multiple policies for an address.
+     * @param configurations The array of configurations to be applied.
+     * @dev This does not have to check if the guard is enabled, as if the guard is set,
+     *      then this tx will fail in `checkTransaction`.
      *      This is a convenience function to avoid having to call `configurePolicy` and then
      *      `confirmPolicy` separately with a delay.
      */
-    function configureAndConfirmPolicy(
-        address target,
-        bytes4 selector,
-        Operation operation,
-        address policy,
-        bytes memory data
-    ) external {
-        address guard = abi.decode(ISafe(msg.sender).getStorageAt(uint256(_GUARD_STORAGE_SLOT), 1), (address));
-        require(guard == address(0), GuardAlreadySet(guard));
-
-        _confirmPolicy(msg.sender, target, selector, operation, policy, data);
+    function configureImmediately(Configuration[] calldata configurations) external {
+        for (uint256 i = 0; i < configurations.length; i++) {
+            _confirmPolicy(
+                msg.sender,
+                configurations[i].target,
+                configurations[i].selector,
+                configurations[i].operation,
+                configurations[i].policy,
+                configurations[i].data
+            );
+        }
     }
 
     /**
-     * @notice Configures a policy for a specific access selector.
-     * @param target The target address.
-     * @param selector The function selector.
-     * @param operation The operation type (CALL or DELEGATECALL).
-     * @param policy The policy address.
-     * @param data The call data for the policy to be called at confirmation.
-     * @dev This has to be called by the Safe owner.
-     *      This could also be used to reconfigure and disable a policy as well.
+     * @notice Requests a policy configuration change.
+     * @param configureRoot The root of the configuration to be applied.
+     * @dev This can be used to set multiple policies at once.
      */
-    function configurePolicy(
-        address target,
-        bytes4 selector,
-        Operation operation,
-        address policy,
-        bytes memory data
-    ) public {
-        bytes32 accessDataHash = keccak256(abi.encodePacked(target, selector, operation, policy, data));
-
-        pendingPolicies[msg.sender][accessDataHash] = block.timestamp + DELAY;
-
-        emit PolicyConfigured(msg.sender, target, selector, operation, policy, data);
+    function requestConfiguration(bytes32 configureRoot) external {
+        require(rootConfigured[msg.sender][configureRoot] == 0, RootAlreadyConfigured(configureRoot));
+        rootConfigured[msg.sender][configureRoot] = block.timestamp + DELAY;
+        emit RootConfigured(msg.sender, configureRoot, block.timestamp + DELAY);
     }
 
     /**
-     * @notice Confirms a policy for a specific access selector.
-     * @param safe The Safe address.
-     * @param target The target address.
-     * @param selector The function selector.
-     * @param operation The operation type (CALL or DELEGATECALL).
-     * @param policy The policy address.
-     * @param data The call data for the policy to be called at confirmation.
-     * @dev This can be called by any user on behalf of Safe.
+     * @notice Invalidates a policy configuration change.
+     * @param configureRoot The root of the configuration to be invalidated.
+     * @dev Invalidation can only be done if the configuration is pending.
+     *      This is not behind a delay, as only pending configurations can be invalidated, and
+     *      this allows invalidating unintended policies immediately before it is confirmed.
      */
-    function confirmPolicy(
-        address safe,
-        address target,
-        bytes4 selector,
-        Operation operation,
-        address policy,
-        bytes memory data
-    ) external {
-        bytes32 accessDataHash = keccak256(abi.encodePacked(target, selector, operation, policy, data));
-        uint256 activationTimestamp = pendingPolicies[safe][accessDataHash];
-        delete pendingPolicies[safe][accessDataHash];
+    function invalidateRoot(bytes32 configureRoot) external {
+        require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
+        delete rootConfigured[msg.sender][configureRoot];
+        emit RootInvalidated(msg.sender, configureRoot);
+    }
 
-        require(activationTimestamp != 0, NoPendingPolicy());
-        require(block.timestamp >= activationTimestamp, PolicyConfirmationPending());
-
-        // Confirm policy
-        _confirmPolicy(safe, target, selector, operation, policy, data);
+    /**
+     * @notice Applies a policy configuration change.
+     * @param configurations The array of configurations to be applied.
+     * @dev This can be used to set multiple policies at once.
+     */
+    function applyConfiguration(Configuration[] calldata configurations) external {
+        bytes32 configureRoot = keccak256(abi.encode(configurations));
+        require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
+        require(block.timestamp >= rootConfigured[msg.sender][configureRoot], RootConfigurationPending());
+        delete rootConfigured[msg.sender][configureRoot];
+        for (uint256 i = 0; i < configurations.length; i++) {
+            _confirmPolicy(
+                msg.sender,
+                configurations[i].target,
+                configurations[i].selector,
+                configurations[i].operation,
+                configurations[i].policy,
+                configurations[i].data
+            );
+        }
     }
 }

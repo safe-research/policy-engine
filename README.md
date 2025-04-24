@@ -73,3 +73,11 @@ In principle, this provides similar features to what a Zodiac `Roles` modifier a
 1. It makes the core contracts much simpler and easier to formally verify
 2. Individual policies can be complicated, and as a general rule `Roles` configurations aren't audited which is a potential security risk
 3. Policy implementations can be independently audited and formally verified
+
+## Guard Removal
+
+To remove a guard, instead of baking in the delay mechanism within the guard contract, we use the delay mechanism which is already present for any policy to get activated. To remove a guard:
+- We `requestConfiguration(...)` with the `configureRoot` as the data with [AllowPolicy](./contracts/policies/AllowPolicy.sol) and selector as `setGuard(...)`, target as Safe itself, and operation as `CALL`
+- Once the delay is over, we can apply the policy using `applyConfiguration(...)` and also remove the Guard (we can use MultiSend for the same to do in a single transaction).
+
+Note: If the Safe reactivates the guard, this policy should be removed (can be done without any delay with `configureImmediately(...)` before the guard is enabled) 

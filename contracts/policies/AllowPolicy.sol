@@ -9,6 +9,10 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
  * @dev Allows a transaction.
  */
 contract AllowPolicy is IPolicy {
+    /**
+     * @inheritdoc IPolicy
+     * @dev This policy always returns the magic value for a particular access selector.
+     */
     function checkTransaction(
         address,
         address,
@@ -21,6 +25,10 @@ contract AllowPolicy is IPolicy {
         return IPolicy.checkTransaction.selector;
     }
 
+    /**
+     * @inheritdoc IPolicy
+     * @dev This policy does not require any configuration.
+     */
     function configure(address, AccessSelector.T, bytes memory) external pure override returns (bool) {
         return true;
     }
