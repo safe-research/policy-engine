@@ -6,7 +6,6 @@ import {IERC165} from "./interfaces/IERC165.sol";
 import {ISafeModuleGuard} from "./interfaces/ISafeModuleGuard.sol";
 import {ISafeTransactionGuard} from "./interfaces/ISafeTransactionGuard.sol";
 import {Operation} from "./interfaces/Operation.sol";
-import {ISafe} from "./interfaces/ISafe.sol";
 
 /**
  * @title Safe Policy Guard
@@ -108,7 +107,6 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      *      this can matter because the Safe can potentially modify state and might lead to unexpected interactions.
      */
     function _allowedCalls(
-        address safe,
         address to,
         uint256 value,
         bytes calldata data,
@@ -153,7 +151,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // control system.
         require(gasPrice == 0, NonZeroGasPrice());
 
-        if (_allowedCalls(msg.sender, to, value, data, operation)) {
+        if (_allowedCalls(to, value, data, operation)) {
             return;
         }
 
