@@ -36,13 +36,46 @@ const deterministicDeployment = (chainId: string): DeterministicDeploymentInfo =
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.28',
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 1000000
+    compilers: [
+      {
+        version: '0.8.28',
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 10_000_000
+          },
+          viaIR: true
+        }
       },
-      viaIR: true
+      {
+        version: '0.7.6',
+        settings: {
+          optimizer: { enabled: false },
+          viaIR: false
+        }
+      }
+    ],
+    overrides: {
+      // Safe contracts before 1.5.0 cannot be compiled via IR pipeline
+      // because of assembly memory safety issues
+      'contracts/test/TestImports.sol': {
+        version: '0.8.28',
+        settings: {
+          optimizer: {
+            enabled: false
+          },
+          viaIR: false
+        }
+      },
+      '@safe-global/safe-contracts/contracts/Safe.sol': {
+        version: '0.8.28',
+        settings: {
+          optimizer: {
+            enabled: false
+          },
+          viaIR: false
+        }
+      }
     }
   },
   networks: {

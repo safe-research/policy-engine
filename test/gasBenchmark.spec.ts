@@ -1,133 +1,67 @@
 import { mine } from '@nomicfoundation/hardhat-network-helpers'
 // Artifact imports
-import SafeArtifact from '@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json'
-import CompatibilityFallbackHandlerArtifact from '@safe-global/safe-contracts/build/artifacts/contracts/handler/CompatibilityFallbackHandler.sol/CompatibilityFallbackHandler.json'
-import SafeProxyFactoryArtifact from '@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json'
 import hre, { ethers } from 'hardhat'
 
-import SafePolicyGuardArtifact from '../artifacts/contracts/SafePolicyGuard.sol/SafePolicyGuard.json'
 import IERC20Artifact from '../artifacts/contracts/interfaces/IERC20.sol/IERC20.json'
-import CoSignerPolicyArtifact from '../artifacts/contracts/policies/CoSignerPolicy.sol/CoSignerPolicy.json'
-import ERC20ApprovePolicyArtifact from '../artifacts/contracts/policies/ERC20ApprovePolicy.sol/ERC20ApprovePolicy.json'
-import ERC20TransferPolicyArtifact from '../artifacts/contracts/policies/ERC20TransferPolicy.sol/ERC20TransferPolicy.json'
-import NativeTransferPolicyArtifact from '../artifacts/contracts/policies/NativeTransferPolicy.sol/NativeTransferPolicy.json'
-import TestERC20Artifact from '../artifacts/contracts/test/TestERC20Token.sol/TestERC20Token.json'
-import { execTransaction, SafeOperation, getSafeTransactionHash, EIP712_SAFE_MESSAGE_TYPE } from '../src/utils'
+import {
+  execTransaction,
+  SafeOperation,
+  getSafeTransactionHash,
+  EIP712_SAFE_MESSAGE_TYPE,
+  createSafe
+} from '../src/utils'
+import {
+  deployCoSignerPolicy,
+  deployERC20ApprovePolicy,
+  deployERC20TransferPolicy,
+  deployNativeTransferPolicy,
+  deploySafeContracts,
+  deploySafePolicyGuard,
+  deployTestERC20Token
+} from './deploy'
 import { logSection, logGasUsage, logGasDiff } from './utils/gas'
-
-const ZeroAddress: `0x${string}` = ethers.ZeroAddress
 
 describe('[@bench] Policies', () => {
   const DELAY = 0n
 
   const setupTests = hre.deployments.createFixture(async () => {
     const [deployer, alice, bob, charlie] = await ethers.getSigners()
-    const SafeSingletonFactory = await ethers.getContractFactory(SafeArtifact.abi, SafeArtifact.bytecode)
-    const safeSingleton = await SafeSingletonFactory.deploy()
 
-    const SafeProxyFactory = await ethers.getContractFactory(
-      SafeProxyFactoryArtifact.abi,
-      SafeProxyFactoryArtifact.bytecode
-    )
-    const safeProxyFactory = await SafeProxyFactory.deploy()
+    const { safeProxyFactory, safe: safeSingleton, compatibilityFallbackHandler } = await deploySafeContracts()
 
-    const CompatibilityFallbackHandlerFactory = await ethers.getContractFactory(
-      CompatibilityFallbackHandlerArtifact.abi,
-      CompatibilityFallbackHandlerArtifact.bytecode
-    )
-    const compatibilityFallbackHandler = await CompatibilityFallbackHandlerFactory.deploy()
+    const safeProxy = await createSafe({
+      owner: alice,
+      saltNonce: 0n,
+      fallbackHandler: await compatibilityFallbackHandler.getAddress(),
+      safeProxyFactory,
+      singleton: safeSingleton
+    })
 
-    const setupData = safeSingleton.interface.encodeFunctionData('setup', [
-      [await alice.getAddress()],
-      1,
-      ZeroAddress,
-      '0x',
-      compatibilityFallbackHandler.target,
-      ZeroAddress,
-      0,
-      ZeroAddress
-    ])
-
-    const safeProxyAddress = await safeProxyFactory.createProxyWithNonce.staticCall(
-      await safeSingleton.getAddress(),
-      setupData,
-      0n
-    )
-    await safeProxyFactory.createProxyWithNonce(safeSingleton.target, setupData, 0n)
-    const safeProxy = await ethers.getContractAt(SafeArtifact.abi, safeProxyAddress)
-
-    const setupCosignerSafeData = safeSingleton.interface.encodeFunctionData('setup', [
-      [await bob.getAddress()],
-      1,
-      ZeroAddress,
-      '0x',
-      compatibilityFallbackHandler.target,
-      ZeroAddress,
-      0,
-      ZeroAddress
-    ])
-
-    const safeProxyCosignerAddress = await safeProxyFactory.createProxyWithNonce.staticCall(
-      await safeSingleton.getAddress(),
-      setupCosignerSafeData,
-      0n
-    )
-    await safeProxyFactory.createProxyWithNonce(safeSingleton.target, setupCosignerSafeData, 0n)
-    const safeProxyCosigner = await ethers.getContractAt(SafeArtifact.abi, safeProxyCosignerAddress)
+    const safeProxyCosigner = await createSafe({
+      owner: bob,
+      saltNonce: 0n,
+      fallbackHandler: await compatibilityFallbackHandler.getAddress(),
+      safeProxyFactory,
+      singleton: safeSingleton
+    })
 
     // Enable the SafePolicyGuard as Guard
-    const SafePolicyGuardFactory = await ethers.getContractFactory(
-      SafePolicyGuardArtifact.abi,
-      SafePolicyGuardArtifact.bytecode
-    )
-    const safePolicyGuardContract = await SafePolicyGuardFactory.deploy(DELAY.toString())
-    const safePolicyGuard = await ethers.getContractAt(SafePolicyGuardArtifact.abi, safePolicyGuardContract.target)
+    const { safePolicyGuard } = await deploySafePolicyGuard({ delay: DELAY })
 
     // Deploy ERC20ApprovePolicy
-    const ERC20ApprovePolicyFactory = await ethers.getContractFactory(
-      ERC20ApprovePolicyArtifact.abi,
-      ERC20ApprovePolicyArtifact.bytecode
-    )
-    const ERC20ApprovePolicyContract = await ERC20ApprovePolicyFactory.deploy()
-    const erc20ApprovePolicy = await ethers.getContractAt(
-      ERC20ApprovePolicyArtifact.abi,
-      ERC20ApprovePolicyContract.target
-    )
+    const { erc20ApprovePolicy } = await deployERC20ApprovePolicy()
 
     // Deploy NativeTransferPolicy
-    const NativeTransferPolicyFactory = await ethers.getContractFactory(
-      NativeTransferPolicyArtifact.abi,
-      NativeTransferPolicyArtifact.bytecode
-    )
-    const NativeTransferPolicyContract = await NativeTransferPolicyFactory.deploy()
-    const nativeTransferPolicy = await ethers.getContractAt(
-      NativeTransferPolicyArtifact.abi,
-      NativeTransferPolicyContract.target
-    )
+    const { nativeTransferPolicy } = await deployNativeTransferPolicy()
 
     // Deploy ERC20TransferPolicy
-    const ERC20TransferPolicyFactory = await ethers.getContractFactory(
-      ERC20TransferPolicyArtifact.abi,
-      ERC20TransferPolicyArtifact.bytecode
-    )
-    const ERC20TransferPolicyContract = await ERC20TransferPolicyFactory.deploy()
-    const erc20TransferPolicy = await ethers.getContractAt(
-      ERC20TransferPolicyArtifact.abi,
-      ERC20TransferPolicyContract.target
-    )
+    const { erc20TransferPolicy } = await deployERC20TransferPolicy()
 
     // Deploy CoSignerPolicy
-    const CoSignerPolicyFactory = await ethers.getContractFactory(
-      CoSignerPolicyArtifact.abi,
-      CoSignerPolicyArtifact.bytecode
-    )
-    const CoSignerPolicyContract = await CoSignerPolicyFactory.deploy()
-    const coSignerPolicy = await ethers.getContractAt(CoSignerPolicyArtifact.abi, CoSignerPolicyContract.target)
+    const { coSignerPolicy } = await deployCoSignerPolicy()
 
     // Deploy TestERC20
-    const TestERC20Factory = await ethers.getContractFactory(TestERC20Artifact.abi, TestERC20Artifact.bytecode)
-    const testERC20Contract = await TestERC20Factory.deploy()
-    const testERC20 = await ethers.getContractAt(TestERC20Artifact.abi, testERC20Contract.target)
+    const { token: testERC20 } = await deployTestERC20Token()
     await testERC20.mint(await alice.getAddress(), 1000n)
     await testERC20.mint(await safeProxy.getAddress(), 1000n)
 
@@ -156,7 +90,6 @@ describe('[@bench] Policies', () => {
 
       const to = await charlie.getAddress()
       const value = 1n
-      const data = '0x'
       const selector = '0x00000000'
 
       // Fund the safe
@@ -166,15 +99,20 @@ describe('[@bench] Policies', () => {
       })
 
       // Warmup tx to increment nonce
-      await execTransaction(owners, safe, ZeroAddress, 0n, '0x', SafeOperation.Call)
+      await execTransaction({ owners, safe })
 
       // First transaction without guard
-      const txWithoutGuard = await execTransaction(owners, safe, to, value, data, SafeOperation.Call)
+      const txWithoutGuard = await execTransaction({ owners, safe, to, value })
       await logGasUsage(txWithoutGuard, 'Tx without guard')
 
       // Enable guard
-      const guardData = safe.interface.encodeFunctionData('setGuard', [safePolicyGuard.target])
-      const txEnableGuard = await execTransaction(owners, safe, safe.target, 0n, guardData, SafeOperation.Call)
+      const guardData = safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      const txEnableGuard = await execTransaction({
+        owners,
+        safe,
+        to: safe.target,
+        data: guardData
+      })
       await logGasUsage(txEnableGuard, 'Set guard')
 
       // Request configuration
@@ -191,14 +129,12 @@ describe('[@bench] Policies', () => {
       const requestPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
         configureRoot
       ])
-      const txRequest = await execTransaction(
+      const txRequest = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        requestPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: requestPolicyConfiguration
+      })
       await logGasUsage(txRequest, 'Request configuration')
 
       await mine(13, { interval: DELAY * 60n })
@@ -207,29 +143,20 @@ describe('[@bench] Policies', () => {
       const applyPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [
         configurations
       ])
-      const txApply = await execTransaction(
+      const txApply = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        applyPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: applyPolicyConfiguration
+      })
       await logGasUsage(txApply, 'Apply configuration')
 
       // Get cosigner signature
-      const safeTransactionHash = await getSafeTransactionHash(
+      const safeTransactionHash = await getSafeTransactionHash({
         safe,
         to,
-        value,
-        data,
-        SafeOperation.Call,
-        0n,
-        0n,
-        0n,
-        ZeroAddress as `0x${string}`,
-        ZeroAddress as `0x${string}`
-      )
+        value
+      })
       const chainId = (await ethers.provider.getNetwork()).chainId
       const bobSignature = await bob.signTypedData(
         { verifyingContract: safeCosigner.target, chainId: chainId },
@@ -238,20 +165,13 @@ describe('[@bench] Policies', () => {
       )
 
       // Execute transaction with guard enabled
-      const txWithGuard = await execTransaction(
+      const txWithGuard = await execTransaction({
         owners,
         safe,
         to,
         value,
-        data,
-        SafeOperation.Call,
-        0n,
-        0n,
-        0n,
-        ZeroAddress as `0x${string}`,
-        ZeroAddress as `0x${string}`,
-        bobSignature
-      )
+        additionalData: bobSignature
+      })
       await logGasUsage(txWithGuard, 'Tx with guard')
 
       await logGasDiff(txWithoutGuard, txWithGuard)
@@ -263,7 +183,6 @@ describe('[@bench] Policies', () => {
       const { safe, safeCosigner, bob, charlie, owners, safePolicyGuard, coSignerPolicy, token } = await setupTests()
 
       const to = await charlie.getAddress()
-      const value = 0n
       const data = token.interface.encodeFunctionData('transfer', [to, 100n])
 
       const selector = token.interface.getFunction('transfer').selector
@@ -274,15 +193,15 @@ describe('[@bench] Policies', () => {
       await token.mint(to, 1000n)
 
       // Make nonce non-zero to avoid additional gas cost when updating storage from non-zero value
-      await execTransaction(owners, safe, ZeroAddress, 0n, '0x', SafeOperation.Call)
+      await execTransaction({ owners, safe })
 
       // First transaction without guard
-      const txWithoutGuard = await execTransaction(owners, safe, to, value, data, SafeOperation.Call)
+      const txWithoutGuard = await execTransaction({ owners, safe, to, data })
       await logGasUsage(txWithoutGuard, 'Tx without guard')
 
       // Enable guard
-      const guardData = safe.interface.encodeFunctionData('setGuard', [safePolicyGuard.target])
-      const txEnableGuard = await execTransaction(owners, safe, safe.target, 0n, guardData, SafeOperation.Call)
+      const guardData = safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      const txEnableGuard = await execTransaction({ owners, safe, to: safe.target, data: guardData })
       await logGasUsage(txEnableGuard, 'Set guard')
 
       // Request configuration
@@ -299,14 +218,12 @@ describe('[@bench] Policies', () => {
       const requestPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
         configureRoot
       ])
-      const txRequest = await execTransaction(
+      const txRequest = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        requestPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: requestPolicyConfiguration
+      })
       await logGasUsage(txRequest, 'Request configuration')
 
       await mine(13, { interval: DELAY * 60n })
@@ -315,29 +232,20 @@ describe('[@bench] Policies', () => {
       const applyPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [
         configurations
       ])
-      const txApply = await execTransaction(
+      const txApply = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        applyPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: applyPolicyConfiguration
+      })
       await logGasUsage(txApply, 'Apply configuration')
 
       // Get cosigner signature
-      const safeTransactionHash = await getSafeTransactionHash(
+      const safeTransactionHash = await getSafeTransactionHash({
         safe,
         to,
-        value,
-        data,
-        SafeOperation.Call,
-        0n,
-        0n,
-        0n,
-        ZeroAddress as `0x${string}`,
-        ZeroAddress as `0x${string}`
-      )
+        data
+      })
       const chainId = (await ethers.provider.getNetwork()).chainId
       const bobSignature = await bob.signTypedData(
         { verifyingContract: safeCosigner.target, chainId: chainId },
@@ -346,20 +254,13 @@ describe('[@bench] Policies', () => {
       )
 
       // Execute transaction with guard enabled
-      const txWithGuard = await execTransaction(
+      const txWithGuard = await execTransaction({
         owners,
         safe,
         to,
-        value,
         data,
-        SafeOperation.Call,
-        0n,
-        0n,
-        0n,
-        ZeroAddress as `0x${string}`,
-        ZeroAddress as `0x${string}`,
-        bobSignature
-      )
+        additionalData: bobSignature
+      })
       await logGasUsage(txWithGuard, 'Tx with guard')
 
       await logGasDiff(txWithoutGuard, txWithGuard)
@@ -372,7 +273,6 @@ describe('[@bench] Policies', () => {
 
       const to = token.target
       const approvalReceipent = await charlie.getAddress()
-      const value = 0n
       const dataWithoutGuard = token.interface.encodeFunctionData('approve', [approvalReceipent, 100n])
       const dataWithGuard = token.interface.encodeFunctionData('approve', [approvalReceipent, 1000n])
 
@@ -381,15 +281,15 @@ describe('[@bench] Policies', () => {
       // Make storage slots non-zero to avoid additional gas cost when updating storage from non-zero value
       // Slots: Safe nonce, ERC20 allowance
       const dataInitialApprove = token.interface.encodeFunctionData('approve', [approvalReceipent, 99n])
-      await execTransaction(owners, safe, to, value, dataInitialApprove, SafeOperation.Call)
+      await execTransaction({ owners, safe, to, data: dataInitialApprove })
 
       // First transaction without guard
-      const txWithoutGuard = await execTransaction(owners, safe, to, value, dataWithoutGuard, SafeOperation.Call)
+      const txWithoutGuard = await execTransaction({ owners, safe, to, data: dataWithoutGuard })
       await logGasUsage(txWithoutGuard, 'Tx without guard')
 
       // Enable guard
-      const guardData = safe.interface.encodeFunctionData('setGuard', [safePolicyGuard.target])
-      const txEnableGuard = await execTransaction(owners, safe, safe.target, 0n, guardData, SafeOperation.Call)
+      const guardData = safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      const txEnableGuard = await execTransaction({ owners, safe, to: safe.target, data: guardData })
       await logGasUsage(txEnableGuard, 'Set guard')
 
       // Request configuration
@@ -406,14 +306,12 @@ describe('[@bench] Policies', () => {
       const calldataConfigurePolicy = safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
         configureRoot
       ])
-      const txRequest = await execTransaction(
+      const txRequest = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        calldataConfigurePolicy,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: calldataConfigurePolicy
+      })
       await logGasUsage(txRequest, 'Request configuration')
 
       await mine(13, { interval: DELAY * 60n })
@@ -422,29 +320,20 @@ describe('[@bench] Policies', () => {
       const applyPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [
         configurations
       ])
-      const txApply = await execTransaction(
+      const txApply = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        applyPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: applyPolicyConfiguration
+      })
       await logGasUsage(txApply, 'Apply configuration')
 
       // Get cosigner signature
-      const safeTransactionHash = await getSafeTransactionHash(
+      const safeTransactionHash = await getSafeTransactionHash({
         safe,
         to,
-        value,
-        dataWithGuard,
-        SafeOperation.Call,
-        0n,
-        0n,
-        0n,
-        ZeroAddress as `0x${string}`,
-        ZeroAddress as `0x${string}`
-      )
+        data: dataWithGuard
+      })
       const chainId = (await ethers.provider.getNetwork()).chainId
       const bobSignature = await bob.signTypedData(
         { verifyingContract: safeCosigner.target, chainId: chainId },
@@ -453,20 +342,13 @@ describe('[@bench] Policies', () => {
       )
 
       // Execute transaction with guard enabled
-      const txWithGuard = await execTransaction(
+      const txWithGuard = await execTransaction({
         owners,
         safe,
         to,
-        value,
-        dataWithGuard,
-        SafeOperation.Call,
-        0n,
-        0n,
-        0n,
-        ZeroAddress as `0x${string}`,
-        ZeroAddress as `0x${string}`,
-        bobSignature
-      )
+        data: dataWithGuard,
+        additionalData: bobSignature
+      })
       await logGasUsage(txWithGuard, 'Tx with guard')
 
       await logGasDiff(txWithoutGuard, txWithGuard)
@@ -480,32 +362,29 @@ describe('[@bench] Policies', () => {
       const { safe, owners, safePolicyGuard, erc20ApprovePolicy, token, charlie } = await setupTests()
 
       const to = token.target
-      const value = 0n
       const approvalReceipent = await charlie.getAddress()
 
       // Make storage slots non-zero to avoid additional gas cost when updating storage from non-zero value
       // Slots: Safe nonce, ERC20 allowance
       const calldataApproveFirst = token.interface.encodeFunctionData('approve', [approvalReceipent, 99n])
-      await execTransaction(owners, safe, to, value, calldataApproveFirst, SafeOperation.Call)
+      await execTransaction({ owners, safe, to, data: calldataApproveFirst })
 
       const calldataApproveSecond = token.interface.encodeFunctionData('approve', [approvalReceipent, 10000n])
-      const txWithoutGuard = await execTransaction(
+      const txWithoutGuard = await execTransaction({
         owners,
         safe,
-        token.target,
-        value,
-        calldataApproveSecond,
-        SafeOperation.Call
-      )
+        to: token.target,
+        data: calldataApproveSecond
+      })
 
       await logGasUsage(txWithoutGuard, 'Tx without guard')
 
-      const callData = safe.interface.encodeFunctionData('setGuard', [safePolicyGuard.target])
-      const txEnableGuard = await execTransaction(owners, safe, safe.target, 0n, callData, SafeOperation.Call)
+      const callData = safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      const txEnableGuard = await execTransaction({ owners, safe, to: safe.target, data: callData })
       await logGasUsage(txEnableGuard, 'Set guard')
 
       const erc20Interface = new ethers.Interface(IERC20Artifact.abi)
-      const selector = erc20Interface.getFunction('approve').selector
+      const selector = erc20Interface.getFunction('approve')?.selector
 
       const erc20TokenAddress = await token.getAddress()
       const spenderList = [approvalReceipent]
@@ -521,7 +400,7 @@ describe('[@bench] Policies', () => {
           target: erc20TokenAddress,
           selector,
           operation: SafeOperation.Call,
-          policy: erc20ApprovePolicy.target,
+          policy: await erc20ApprovePolicy.getAddress(),
           data: spenderData
         }
       ]
@@ -534,14 +413,12 @@ describe('[@bench] Policies', () => {
       const requestPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
         configureRoot
       ])
-      const txRequest = await execTransaction(
+      const txRequest = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        requestPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: requestPolicyConfiguration
+      })
       await logGasUsage(txRequest, 'Request configuration')
 
       await mine(13, { interval: DELAY * 60n })
@@ -549,25 +426,21 @@ describe('[@bench] Policies', () => {
       const applyPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [
         configurations
       ])
-      const txApply = await execTransaction(
+      const txApply = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        applyPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: applyPolicyConfiguration
+      })
       await logGasUsage(txApply, 'Apply configuration')
 
       const calldataApproveThird = token.interface.encodeFunctionData('approve', [approvalReceipent, 100000n])
-      const txWithGuard = await execTransaction(
+      const txWithGuard = await execTransaction({
         owners,
         safe,
-        erc20TokenAddress,
-        0n,
-        calldataApproveThird,
-        SafeOperation.Call
-      )
+        to: erc20TokenAddress,
+        data: calldataApproveThird
+      })
 
       await logGasUsage(txWithGuard, 'Tx with guard')
 
@@ -585,25 +458,23 @@ describe('[@bench] Policies', () => {
 
       // Make storage slots non-zero to avoid additional gas cost when updating storage from non-zero value
       // Slots: Safe nonce, ERC20 balance
-      await execTransaction(owners, safe, token.target, 0n, calldataTransferFirst, SafeOperation.Call)
+      await execTransaction({ owners, safe, to: token.target, data: calldataTransferFirst })
 
       const calldataTransferSecond = token.interface.encodeFunctionData('transfer', [await bob.getAddress(), 1n])
-      const txWithoutGuard = await execTransaction(
+      const txWithoutGuard = await execTransaction({
         owners,
         safe,
-        token.target,
-        0n,
-        calldataTransferSecond,
-        SafeOperation.Call
-      )
+        to: token.target,
+        data: calldataTransferSecond
+      })
       await logGasUsage(txWithoutGuard, 'Tx without guard')
 
-      const callData = safe.interface.encodeFunctionData('setGuard', [safePolicyGuard.target])
-      const txEnableGuard = await execTransaction(owners, safe, safe.target, 0n, callData, SafeOperation.Call)
+      const callData = safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      const txEnableGuard = await execTransaction({ owners, safe, to: safe.target, data: callData })
       await logGasUsage(txEnableGuard, 'Set guard')
 
       const erc20Interface = new ethers.Interface(IERC20Artifact.abi)
-      const selector = erc20Interface.getFunction('transfer').selector
+      const selector = erc20Interface.getFunction('transfer')?.selector
 
       const erc20TokenAddress = await token.getAddress()
       const recipientList = [await bob.getAddress()]
@@ -632,14 +503,12 @@ describe('[@bench] Policies', () => {
       const requestPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
         configureRoot
       ])
-      const txRequest = await execTransaction(
+      const txRequest = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        requestPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: requestPolicyConfiguration
+      })
       await logGasUsage(txRequest, 'Request configuration')
 
       await mine(13, { interval: DELAY * 60n })
@@ -647,25 +516,21 @@ describe('[@bench] Policies', () => {
       const applyPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [
         configurations
       ])
-      const txApply = await execTransaction(
+      const txApply = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        applyPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: applyPolicyConfiguration
+      })
       await logGasUsage(txApply, 'Apply configuration')
 
       const calldataTransferThird = token.interface.encodeFunctionData('transfer', [await bob.getAddress(), 1n])
-      const txWithGuard = await execTransaction(
+      const txWithGuard = await execTransaction({
         owners,
         safe,
-        erc20TokenAddress,
-        0n,
-        calldataTransferThird,
-        SafeOperation.Call
-      )
+        to: erc20TokenAddress,
+        data: calldataTransferThird
+      })
 
       await logGasUsage(txWithGuard, 'Tx with guard')
       await logGasDiff(txWithoutGuard, txWithGuard)
@@ -683,18 +548,18 @@ describe('[@bench] Policies', () => {
       const recipientAddress = await bob.getAddress()
       const configData = '0x' // No additional data needed for native transfer
       // Warmup tx for increment the nonce
-      await execTransaction(owners, safe, ZeroAddress, 0n, '0x', SafeOperation.Call)
+      await execTransaction({ owners, safe })
 
       await alice.sendTransaction({
         to: safe.target,
         value: ethers.parseEther('3')
       })
 
-      const txWithoutGuard = await execTransaction(owners, safe, recipientAddress, amount, '0x', SafeOperation.Call)
+      const txWithoutGuard = await execTransaction({ owners, safe, to: recipientAddress, value: amount })
       await logGasUsage(txWithoutGuard, 'Tx without guard')
 
-      const callData = safe.interface.encodeFunctionData('setGuard', [safePolicyGuard.target])
-      const txEnableGuard = await execTransaction(owners, safe, safe.target, 0n, callData, SafeOperation.Call)
+      const callData = safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      const txEnableGuard = await execTransaction({ owners, safe, to: safe.target, data: callData })
       await logGasUsage(txEnableGuard, 'Set guard')
 
       const configurations = [
@@ -715,14 +580,12 @@ describe('[@bench] Policies', () => {
       const requestPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
         configureRoot
       ])
-      const txRequest = await execTransaction(
+      const txRequest = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        requestPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: requestPolicyConfiguration
+      })
       await logGasUsage(txRequest, 'Request configuration')
 
       await mine(13, { interval: DELAY * 60n })
@@ -730,17 +593,15 @@ describe('[@bench] Policies', () => {
       const applyPolicyConfiguration = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [
         configurations
       ])
-      const txApply = await execTransaction(
+      const txApply = await execTransaction({
         owners,
         safe,
-        safePolicyGuard.target,
-        0n,
-        applyPolicyConfiguration,
-        SafeOperation.Call
-      )
+        to: await safePolicyGuard.getAddress(),
+        data: applyPolicyConfiguration
+      })
       await logGasUsage(txApply, 'Apply configuration')
 
-      const txWithGuard = await execTransaction(owners, safe, recipientAddress, amount, '0x', SafeOperation.Call)
+      const txWithGuard = await execTransaction({ owners, safe, to: recipientAddress, value: amount })
 
       await logGasUsage(txWithGuard, 'Tx with guard')
       await logGasDiff(txWithoutGuard, txWithGuard)
