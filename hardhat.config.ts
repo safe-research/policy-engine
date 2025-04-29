@@ -67,7 +67,7 @@ const config: HardhatUserConfig = {
           viaIR: false
         }
       },
-      '@safe-global/safe-contracts/contracts/Safe.sol': {
+      '@safe-global/safe-smart-account/contracts/Safe.sol': {
         version: '0.8.28',
         settings: {
           optimizer: {

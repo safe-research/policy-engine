@@ -10,6 +10,7 @@ import {
   EIP712_SAFE_MESSAGE_TYPE,
   createSafe
 } from '../src/utils'
+import { SafePolicyGuard } from '../typechain-types'
 import {
   deployCoSignerPolicy,
   deployERC20ApprovePolicy,
@@ -159,7 +160,7 @@ describe('[@bench] Policies', () => {
       })
       const chainId = (await ethers.provider.getNetwork()).chainId
       const bobSignature = await bob.signTypedData(
-        { verifyingContract: safeCosigner.target, chainId: chainId },
+        { verifyingContract: await safeCosigner.getAddress(), chainId: chainId },
         EIP712_SAFE_MESSAGE_TYPE,
         { message: safeTransactionHash }
       )
@@ -248,7 +249,7 @@ describe('[@bench] Policies', () => {
       })
       const chainId = (await ethers.provider.getNetwork()).chainId
       const bobSignature = await bob.signTypedData(
-        { verifyingContract: safeCosigner.target, chainId: chainId },
+        { verifyingContract: await safeCosigner.getAddress(), chainId: chainId },
         EIP712_SAFE_MESSAGE_TYPE,
         { message: safeTransactionHash }
       )
@@ -336,7 +337,7 @@ describe('[@bench] Policies', () => {
       })
       const chainId = (await ethers.provider.getNetwork()).chainId
       const bobSignature = await bob.signTypedData(
-        { verifyingContract: safeCosigner.target, chainId: chainId },
+        { verifyingContract: await safeCosigner.getAddress(), chainId: chainId },
         EIP712_SAFE_MESSAGE_TYPE,
         { message: safeTransactionHash }
       )
@@ -384,7 +385,7 @@ describe('[@bench] Policies', () => {
       await logGasUsage(txEnableGuard, 'Set guard')
 
       const erc20Interface = new ethers.Interface(IERC20Artifact.abi)
-      const selector = erc20Interface.getFunction('approve')?.selector
+      const selector = erc20Interface.getFunction('approve')?.selector ?? '0x00000000'
 
       const erc20TokenAddress = await token.getAddress()
       const spenderList = [approvalReceipent]
@@ -395,7 +396,7 @@ describe('[@bench] Policies', () => {
         [spenderList.map((spender) => ({ spender, allowed: true }))]
       )
 
-      const configurations = [
+      const configurations: SafePolicyGuard.ConfigurationStruct[] = [
         {
           target: erc20TokenAddress,
           selector,
@@ -474,7 +475,7 @@ describe('[@bench] Policies', () => {
       await logGasUsage(txEnableGuard, 'Set guard')
 
       const erc20Interface = new ethers.Interface(IERC20Artifact.abi)
-      const selector = erc20Interface.getFunction('transfer')?.selector
+      const selector = erc20Interface.getFunction('transfer')?.selector ?? '0x00000000'
 
       const erc20TokenAddress = await token.getAddress()
       const recipientList = [await bob.getAddress()]
@@ -485,7 +486,7 @@ describe('[@bench] Policies', () => {
         [recipientList.map((recipient) => ({ recipient, allowed: true }))]
       )
 
-      const configurations = [
+      const configurations: SafePolicyGuard.ConfigurationStruct[] = [
         {
           target: erc20TokenAddress,
           selector,
