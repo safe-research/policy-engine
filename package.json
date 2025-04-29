@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "license": "LGPL-3.0-only",
   "scripts": {
-    "build": "hardhat compile",
+    "build": "hardhat clean && hardhat compile",
     "build:ts:typecheck": "tsc --noEmit",
     "deploy": "hardhat deploy --network",
     "lint": "npm run lint:sol && npm run lint:ts",
@@ -31,8 +31,8 @@
     "@nomicfoundation/hardhat-verify": "^2.0.13",
     "@nomicfoundation/ignition-core": "^0.15.11",
     "@openzeppelin/contracts": "^5.2.0",
-    "@safe-global/safe-contracts": "1.4.1-2",
     "@safe-global/safe-singleton-factory": "^1.0.41",
+    "@safe-global/safe-smart-account": "github:safe-global/safe-smart-account",
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
@@ -57,10 +57,5 @@
     "typechain": "^8.3.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.24.0"
-  },
-  "overrides": {
-    "@safe-global/safe-contracts": {
-      "ethers": "^6.13.5"
-    }
   }
 }
