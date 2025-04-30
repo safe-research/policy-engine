@@ -101,13 +101,8 @@ describe('ERC20ApprovePolicy', function () {
       const spender = randomAddress()
       const amount = ethers.parseEther('100')
 
-      // Configure the ERC20 approve policy with no signer
-      const spenderData = [
-        {
-          spender: ZeroAddress,
-          allowed: false
-        }
-      ]
+      // Configure the ERC20 approve policy with no spender
+      const spenderData: { spender: string; allowed: boolean }[] = []
 
       const configurations = [
         createConfiguration({
@@ -201,13 +196,8 @@ describe('ERC20ApprovePolicy', function () {
       const spender = randomAddress()
       const amount = ethers.parseEther('1')
 
-      // Configure the ERC20 approve policy with a different spender
-      const spenderData = [
-        {
-          spender: ZeroAddress,
-          allowed: false
-        }
-      ]
+      // Configure the ERC20 approve policy with no spender
+      const spenderData: { spender: string; allowed: boolean }[] = []
 
       const configurations = [
         createConfiguration({
