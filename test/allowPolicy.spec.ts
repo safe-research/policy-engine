@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, randomAddress, SafeOperation } from '../src/utils'
+import { createConfiguration, createSafe, execTransaction, randomAddress } from '../src/utils'
 import { deploySafePolicyGuard, deploySafeContracts, deployAllowPolicy } from './deploy'
 
 describe('AllowPolicy', function () {
@@ -47,8 +47,7 @@ describe('AllowPolicy', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
       })
 
       // Enable the guard on safe
@@ -56,8 +55,7 @@ describe('AllowPolicy', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Send some ETH from owner to the safe for next transaction
@@ -89,8 +87,7 @@ describe('AllowPolicy', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Try to execute a random transaction
