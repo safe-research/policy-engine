@@ -98,8 +98,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
       })
 
       // Check if the configuration is set
@@ -144,8 +143,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
         })
       ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyConfigurationFailed') // Actual error is `PolicyConfigurationFailed`
     })
@@ -174,8 +172,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
       })
 
       // Check if the configuration is set
@@ -227,8 +224,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
       })
 
       // Check if the configuration is set
@@ -270,8 +266,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Call the configure immediately function on safe using execTransaction helper function
@@ -280,8 +275,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
         })
       )
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
@@ -313,8 +307,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Check if the configuration request is set
@@ -345,8 +338,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Getting the timestamp of the configuration request
@@ -357,8 +349,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Check if the configuration request is set
@@ -389,8 +380,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Call the request configuration function again on safe using execTransaction helper function
@@ -399,8 +389,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
         })
       ).to.be.revertedWithCustomError(safePolicyGuard, 'RootAlreadyConfigured') // Actual error is `RootAlreadyConfigured`
     })
@@ -429,8 +418,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
         })
       )
         .to.emit(safePolicyGuard, 'RootConfigured')
@@ -459,8 +447,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Increase the time to the delay
@@ -471,8 +458,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration])
       })
 
       // Check if the configuration is set
@@ -515,8 +501,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Call the request configuration function on safe using execTransaction helper function
@@ -524,8 +509,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Increase the time to the delay
@@ -536,8 +520,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration])
       })
 
       // Check if the configuration is set
@@ -578,8 +561,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration])
         })
       ).to.be.revertedWithCustomError(safePolicyGuard, 'RootNotConfigured') // Actual error is `RootNotConfigured`
     })
@@ -604,8 +586,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Call the apply configuration function on safe using execTransaction helper function
@@ -614,8 +595,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration])
         })
       ).to.be.revertedWithCustomError(safePolicyGuard, 'RootConfigurationPending') // Actual error is `RootConfigurationPending`
     })
@@ -640,8 +620,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Increase the time to the delay
@@ -653,8 +632,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration])
         })
       )
         .to.emit(safePolicyGuard, 'PolicyConfirmed')
@@ -690,8 +668,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Call the invalidate root function on safe using execTransaction helper function
@@ -699,8 +676,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot])
       })
 
       // Check if the configuration is invalidated
@@ -731,8 +707,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Call the request configuration function on safe using execTransaction helper function
@@ -740,8 +715,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Call the invalidate root function on safe using execTransaction helper function
@@ -749,8 +723,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot])
       })
 
       // Check if the configuration is invalidated
@@ -773,8 +746,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot])
         })
       )
         .to.be.revertedWithCustomError(safePolicyGuard, 'RootNotConfigured')
@@ -801,8 +773,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot]),
-        operation: SafeOperation.Call
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
       })
 
       // Call the invalidate root function on safe using execTransaction helper function
@@ -811,8 +782,7 @@ describe('SafePolicyGuard', function () {
           owners: [owner],
           safe,
           to: await safePolicyGuard.getAddress(),
-          data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot]),
-          operation: SafeOperation.Call
+          data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [configurationRoot])
         })
       )
         .to.emit(safePolicyGuard, 'RootInvalidated')
@@ -829,8 +799,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Try to execute a transaction that is not configured
@@ -838,9 +807,7 @@ describe('SafePolicyGuard', function () {
         execTransaction({
           owners: [owner],
           safe,
-          to: randomAddress(),
-          data: '0x',
-          operation: SafeOperation.Call
+          to: randomAddress()
         })
       )
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
@@ -861,8 +828,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('enableModule', [await testModule.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('enableModule', [await testModule.getAddress()])
       })
 
       // Enable the guard on safe as ModuleGuard (Using Safe v1.5.0)
@@ -870,8 +836,7 @@ describe('SafePolicyGuard', function () {
         owners: [owner],
         safe,
         to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setModuleGuard', [await safePolicyGuard.getAddress()]),
-        operation: SafeOperation.Call
+        data: safe.interface.encodeFunctionData('setModuleGuard', [await safePolicyGuard.getAddress()])
       })
 
       // Try to execute a transaction that is not configured through the module
