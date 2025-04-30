@@ -29,7 +29,7 @@ describe('SafePolicyGuard', function () {
     const safe = await createSafe({
       owner,
       guard: ZeroAddress, // No guard at this point
-      saltNonce: BigInt(0xbeef),
+      saltNonce: BigInt(0x1),
       safeProxyFactory,
       singleton: safeSingleton
     })
@@ -164,8 +164,9 @@ describe('SafePolicyGuard', function () {
         configuration[0].operation
       )
 
-      // Check that the access is 0 and policy is ZeroAddress
-      expect(initialAccess).to.equal(0)
+      // Check that the access is fallback access and policy is ZeroAddress
+      const expectedFallbackAccess = await accessSelector.createFallback(configuration[0].operation)
+      expect(initialAccess).to.equal(expectedFallbackAccess)
       expect(initialPolicy).to.equal(ZeroAddress)
 
       // Call the configure immediately function on safe using execTransaction helper function
@@ -832,7 +833,7 @@ describe('SafePolicyGuard', function () {
         operation: SafeOperation.Call
       })
 
-      // Do some transaction on safe using execTransaction helper function
+      // Try to execute a transaction that is not configured
       await expect(
         execTransaction({
           owners: [owner],
@@ -873,7 +874,7 @@ describe('SafePolicyGuard', function () {
         operation: SafeOperation.Call
       })
 
-      // Do some transaction on safe using the module
+      // Try to execute a transaction that is not configured through the module
       await expect(testModule.executeTx(await safe.getAddress(), randomAddress(), 0, '0x', SafeOperation.Call))
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
         .withArgs(ZeroAddress)
