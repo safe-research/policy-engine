@@ -23,8 +23,7 @@ export type SafeCreationOptions = {
   singleton: Safe
 }
 
-export type SafeTransactionParameters = {
-  safe: ISafe
+export type TransactionParameters = {
   to?: AddressLike
   value?: BigNumberish
   data?: BytesLike
@@ -36,15 +35,44 @@ export type SafeTransactionParameters = {
   refundReceiver?: AddressLike
 }
 
-export type ExecTransactionParameters = SafeTransactionParameters & {
+export type TransactionParametersWithNonce = TransactionParameters & {
+  nonce: BigNumberish
+}
+
+export type TransactionParametersWithSafe = TransactionParameters & {
+  safe: ISafe
+}
+
+export type ExecTransactionParameters = TransactionParametersWithSafe & {
   owners: Signer[]
   additionalData?: BytesLike
   signingMethod?: 'signMessage' | 'preApprovedSignature'
 }
 
+export interface SafeSignature {
+  signer: string
+  data: string
+}
+
 export const EIP712_SAFE_MESSAGE_TYPE = {
   // "SafeMessage(bytes message)"
   SafeMessage: [{ type: 'bytes', name: 'message' }]
+}
+
+export const EIP712_SAFE_TX_TYPE = {
+  // "SafeTx(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,uint256 nonce)"
+  SafeTx: [
+    { type: 'address', name: 'to' },
+    { type: 'uint256', name: 'value' },
+    { type: 'bytes', name: 'data' },
+    { type: 'uint8', name: 'operation' },
+    { type: 'uint256', name: 'safeTxGas' },
+    { type: 'uint256', name: 'baseGas' },
+    { type: 'uint256', name: 'gasPrice' },
+    { type: 'address', name: 'gasToken' },
+    { type: 'address', name: 'refundReceiver' },
+    { type: 'uint256', name: 'nonce' }
+  ]
 }
 
 /**
@@ -194,7 +222,7 @@ export async function getSafeTransactionHash({
   gasPrice = 0n,
   gasToken = ZeroAddress,
   refundReceiver = ZeroAddress
-}: SafeTransactionParameters): Promise<string> {
+}: TransactionParametersWithSafe): Promise<string> {
   const nonce = BigInt(await safe.nonce())
 
   return await safe.getTransactionHash(
@@ -362,4 +390,27 @@ export function getConfigurationRoot(configurations: SafePolicyGuard.Configurati
       [configurations]
     )
   )
+}
+
+/**
+ * Function to sign a Safe transaction with a signer.
+ * @param signer The signer to sign the transaction with.
+ * @param safeAddress The address of the Safe.
+ * @param safeTx The transaction to sign.
+ * @param chainId The chain ID of the network.
+ * @returns The signed transaction.
+ */
+export const safeSignTypedData = async (
+  signer: Signer,
+  safeAddress: string,
+  safeTx: TransactionParametersWithNonce,
+  chainId?: BigNumberish
+): Promise<SafeSignature> => {
+  if (!chainId && !signer.provider) throw Error('Provider required to retrieve chainId')
+  const cid = chainId || (await signer.provider!.getNetwork()).chainId
+  const signerAddress = await signer.getAddress()
+  return {
+    signer: signerAddress,
+    data: await signer.signTypedData({ verifyingContract: safeAddress, chainId: cid }, EIP712_SAFE_TX_TYPE, safeTx)
+  }
 }
