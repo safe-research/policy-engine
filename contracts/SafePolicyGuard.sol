@@ -195,7 +195,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // ECDSA signatures from the owners) works for policies that don't require any additional
         // context without needing to append `uint256(0)` to the signatures bytes.
 
-        if (signatures.length < 32) {
+        if (signatures.length < 66) {
             return _emptyContext();
         }
 

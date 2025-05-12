@@ -1,5 +1,14 @@
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers'
-import { AddressLike, BigNumberish, BytesLike, ethers, Signer, TransactionResponse, ZeroAddress } from 'ethers'
+import {
+  AddressLike,
+  BaseContract,
+  BigNumberish,
+  BytesLike,
+  ethers,
+  Signer,
+  TransactionResponse,
+  ZeroAddress
+} from 'ethers'
 
 import { GUARD_STORAGE_SLOT } from '../lib/constants'
 import { sameHexString } from '../test/deploy/util/strings'
@@ -23,17 +32,22 @@ export type SafeCreationOptions = {
   singleton: Safe
 }
 
-export type TransactionParameters = {
+export type MetaTransaction = {
   to?: AddressLike
   value?: BigNumberish
   data?: BytesLike
   operation?: SafeOperation
+}
+
+export type GasParametersAndRefund = {
   safeTxGas?: BigNumberish
   baseGas?: BigNumberish
   gasPrice?: BigNumberish
   gasToken?: AddressLike
   refundReceiver?: AddressLike
 }
+
+export type TransactionParameters = MetaTransaction & GasParametersAndRefund
 
 export type TransactionParametersWithNonce = TransactionParameters & {
   nonce: BigNumberish
@@ -413,4 +427,91 @@ export const safeSignTypedData = async (
     signer: signerAddress,
     data: await signer.signTypedData({ verifyingContract: safeAddress, chainId: cid }, EIP712_SAFE_TX_TYPE, safeTx)
   }
+}
+
+/**
+ * Function to build a Safe transaction.
+ * @param tx The transaction parameters.
+ * @returns The built Safe transaction.
+ */
+export const buildSafeTransaction = (tx: TransactionParametersWithNonce): TransactionParametersWithNonce => {
+  return {
+    to: tx.to || ZeroAddress,
+    value: tx.value || 0,
+    data: tx.data || '0x',
+    operation: tx.operation || 0,
+    safeTxGas: tx.safeTxGas || 0,
+    baseGas: tx.baseGas || 0,
+    gasPrice: tx.gasPrice || 0,
+    gasToken: tx.gasToken || ZeroAddress,
+    refundReceiver: tx.refundReceiver || ZeroAddress,
+    nonce: tx.nonce || 0
+  }
+}
+
+/**
+ * Function to encode a multi-send transaction.
+ * @param txs The transactions to encode.
+ * @returns The encoded multi-send transaction.
+ */
+export const encodeMultiSend = (txs: MetaTransaction[]): string => {
+  const encoded =
+    '0x' +
+    txs
+      .map((tx) => {
+        const data = ethers.getBytes(tx.data ?? '0x')
+        return ethers
+          .solidityPacked(
+            ['uint8', 'address', 'uint256', 'uint256', 'bytes'],
+            [tx.operation, tx.to, tx.value, data.length, tx.data]
+          )
+          .slice(2)
+      })
+      .join('')
+  return encoded
+}
+
+/**
+ * Function to build a contract call transaction.
+ * @param contract The contract to call.
+ * @param method The method to call on the contract.
+ * @param params The parameters to pass to the method.
+ * @param nonce The nonce for the transaction.
+ * @param delegateCall Whether to use delegate call. Default is false.
+ * @param overrides Additional transaction parameters.
+ * @returns The built transaction parameters.
+ */
+export const buildContractCall = async (
+  contract: BaseContract,
+  method: string,
+  params: unknown[],
+  nonce: BigNumberish,
+  delegateCall?: boolean,
+  overrides?: TransactionParametersWithNonce
+): Promise<TransactionParametersWithNonce> => {
+  const data = contract.interface.encodeFunctionData(method, params)
+  return buildSafeTransaction({
+    to: await contract.getAddress(),
+    data,
+    operation: delegateCall ? 1 : 0,
+    nonce,
+    ...overrides
+  })
+}
+
+/**
+ * Function to build a multi-send Safe transaction.
+ * @param multiSend The multi-send contract.
+ * @param txs The transactions to send.
+ * @param nonce The nonce for the transaction.
+ * @param overrides Additional transaction parameters.
+ * @returns The built transaction parameters.
+ */
+export const buildMultiSendSafeTx = async (
+  multiSend: BaseContract,
+  txs: MetaTransaction[],
+  nonce: BigNumberish,
+  overrides?: TransactionParametersWithNonce
+): Promise<TransactionParametersWithNonce> => {
+  return buildContractCall(multiSend, 'multiSend', [encodeMultiSend(txs)], nonce, true, overrides)
 }
