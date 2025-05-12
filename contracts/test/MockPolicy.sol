@@ -43,7 +43,7 @@ contract MockPolicy is IPolicy {
         Operation,
         bytes calldata,
         AccessSelector.T
-    ) external override returns (bytes4 magicValue) {
+    ) external view override returns (bytes4 magicValue) {
         return revertTransaction ? magicValue : IPolicy.checkTransaction.selector;
     }
 

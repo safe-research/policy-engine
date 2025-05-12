@@ -23,7 +23,7 @@ contract MultiSendPolicy is IPolicy {
         Operation operation,
         bytes calldata context,
         AccessSelector.T
-    ) external override returns (bytes4 magicValue) {
+    ) external view override returns (bytes4 magicValue) {
         bytes calldata transactions = _decodeMultiSendTransactions(data);
         bytes calldata ctx;
         while (transactions.length > 0) {
