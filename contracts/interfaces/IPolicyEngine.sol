@@ -41,5 +41,5 @@ interface IPolicyEngine {
         bytes calldata data,
         Operation operation,
         bytes calldata context
-    ) external returns (address);
+    ) external view returns (address);
 }

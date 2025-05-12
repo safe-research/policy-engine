@@ -104,7 +104,7 @@ abstract contract PolicyEngine is IPolicyEngine {
         bytes calldata data,
         Operation operation,
         bytes calldata context
-    ) public returns (address) {
+    ) public view returns (address) {
         (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
         require(policy != address(0), AccessDenied(address(0)));
         try IPolicy(policy).checkTransaction(safe, to, value, data, operation, context, access) returns (

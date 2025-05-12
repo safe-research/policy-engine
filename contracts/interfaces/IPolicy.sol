@@ -27,7 +27,7 @@ interface IPolicy {
         Operation operation,
         bytes calldata context,
         AccessSelector.T access
-    ) external returns (bytes4 magicValue);
+    ) external view returns (bytes4 magicValue);
 
     /**
      * @notice Configures the policy.

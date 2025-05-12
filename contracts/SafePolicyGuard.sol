@@ -111,7 +111,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         uint256 value,
         bytes calldata data,
         Operation operation
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         bytes4 selector = _decodeSelector(data);
 
         // Invalidate Root
@@ -144,7 +144,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         address payable,
         bytes calldata signatures,
         address
-    ) external override {
+    ) external view override {
         // TODO(nlordell): To simplify policies, we do not support gas prices for transaction
         // execution payment. This would add another mechanism for extracting funds from a Safe
         // transaction that is rarely used, and therefore should not be covered by the access
@@ -174,7 +174,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         bytes calldata data,
         Operation operation,
         address
-    ) external override returns (bytes32 moduleTxHash) {
+    ) external view override returns (bytes32 moduleTxHash) {
         checkTransaction(msg.sender, to, value, data, operation, _emptyContext());
         return bytes32(0);
     }
