@@ -94,3 +94,6 @@ deployments/
 
 # Typecheck files
 tsconfig.tsbuildinfo
+
+# Cursor
+.cursor/
