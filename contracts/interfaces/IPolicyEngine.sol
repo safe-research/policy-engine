@@ -40,6 +40,6 @@ interface IPolicyEngine {
         uint256 value,
         bytes calldata data,
         Operation operation,
-        bytes calldata context
+        bytes memory context
     ) external view returns (address);
 }

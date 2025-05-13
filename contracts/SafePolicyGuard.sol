@@ -173,9 +173,9 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         uint256 value,
         bytes calldata data,
         Operation operation,
-        address
+        address module
     ) external view override returns (bytes32 moduleTxHash) {
-        checkTransaction(msg.sender, to, value, data, operation, _emptyContext());
+        checkTransaction(msg.sender, to, value, data, operation, abi.encode(module));
         return bytes32(0);
     }
 

@@ -103,7 +103,7 @@ abstract contract PolicyEngine is IPolicyEngine {
         uint256 value,
         bytes calldata data,
         Operation operation,
-        bytes calldata context
+        bytes memory context
     ) public view returns (address) {
         (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
         require(policy != address(0), AccessDenied(address(0)));

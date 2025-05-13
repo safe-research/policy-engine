@@ -51,7 +51,7 @@ contract MockPolicy is IPolicy {
      * @inheritdoc IPolicy
      * @dev This policy does not require any configuration.
      */
-    function configure(address, AccessSelector.T, bytes memory) external override returns (bool) {
+    function configure(address, AccessSelector.T, bytes memory) external view override returns (bool) {
         return !revertConfigure;
     }
 }
