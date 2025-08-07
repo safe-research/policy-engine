@@ -22,6 +22,9 @@ contract ERC20TransferPolicy is IPolicy {
         bool allowed;
     }
 
+    /**
+     * @dev Mapping of recipients for each Safe and token.
+     */
     // solhint-disable-next-line private-vars-leading-underscore
     mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address recipient => bool))))
         private $recipients;
@@ -92,5 +95,22 @@ contract ERC20TransferPolicy is IPolicy {
             $recipients[msg.sender][safe][target][recipientList[i].recipient] = recipientList[i].allowed;
         }
         return true;
+    }
+
+    /**
+     * @notice Check if a recipient is allowed for a specific Safe and token.
+     * @param policyGuard The policy guard address.
+     * @param safe The Safe address.
+     * @param token The token address.
+     * @param recipient The recipient address.
+     * @return bool Whether the recipient is allowed.
+     */
+    function isRecipientAllowed(
+        address policyGuard,
+        address safe,
+        address token,
+        address recipient
+    ) external view returns (bool) {
+        return $recipients[policyGuard][safe][token][recipient];
     }
 }

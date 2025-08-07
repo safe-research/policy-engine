@@ -22,6 +22,9 @@ contract ERC20ApprovePolicy is IPolicy {
         bool allowed;
     }
 
+    /**
+     * @dev Mapping of spenders for each Safe and token.
+     */
     // solhint-disable-next-line private-vars-leading-underscore
     mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address spender => bool))))
         private $spenders;
@@ -88,5 +91,22 @@ contract ERC20ApprovePolicy is IPolicy {
             $spenders[msg.sender][safe][target][spenderList[i].spender] = spenderList[i].allowed;
         }
         return true;
+    }
+
+    /**
+     * @notice Check if a spender is allowed for a specific Safe and token.
+     * @param policyGuard The address of the policy guard.
+     * @param safe The Safe address.
+     * @param token The token address.
+     * @param spender The spender address.
+     * @return bool True if the spender is allowed, false otherwise.
+     */
+    function isSpenderAllowed(
+        address policyGuard,
+        address safe,
+        address token,
+        address spender
+    ) external view returns (bool) {
+        return $spenders[policyGuard][safe][token][spender];
     }
 }

@@ -81,3 +81,24 @@ To remove a guard, instead of baking in the delay mechanism within the guard con
 - Once the delay is over, we can apply the policy using `applyConfiguration(...)` and also remove the Guard (we can use MultiSend for the same to do in a single transaction).
 
 Note: If the Safe reactivates the guard, this policy should be removed (can be done without any delay with `configureImmediately(...)` before the guard is enabled) 
+
+## Testing
+
+Run the test suite:
+```bash
+npm test
+```
+
+Run gas benchmarks:
+```bash
+npm run test:bench
+```
+
+## Deployment
+
+Deploy contracts:
+```bash
+npm run deploy -- <network>
+```
+
+Note: Ensure proper configuration of delay parameters based on your security requirements. 
