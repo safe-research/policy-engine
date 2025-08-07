@@ -11,13 +11,10 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
 contract AllowedModulePolicy is IPolicy {
     /**
      * @notice Mapping of allowed modules for each safe.
-     * @dev The mapping is structured as follows:
-     * - The first key is the address of the policy guard.
-     * - The second key is the address of the safe.
-     * - The third key is the address of the module.
-     * - The value is a boolean indicating whether the module is allowed or not.
      */
-    mapping(address => mapping(address => mapping(address => bool))) public allowedModules;
+    // solhint-disable-next-line private-vars-leading-underscore
+    mapping(address policyGuard => mapping(address safe => mapping(address module => bool allowed)))
+        private $allowedModules;
 
     /**
      * @notice Error indicating that the module is not allowed.
@@ -44,7 +41,7 @@ contract AllowedModulePolicy is IPolicy {
     ) external view override returns (bytes4 magicValue) {
         address module = abi.decode(context, (address));
 
-        require(allowedModules[msg.sender][safe][module], UnauthorizedModule());
+        require($allowedModules[msg.sender][safe][module], UnauthorizedModule());
 
         return IPolicy.checkTransaction.selector;
     }
@@ -57,8 +54,18 @@ contract AllowedModulePolicy is IPolicy {
     function configure(address safe, AccessSelector.T, bytes memory data) external override returns (bool) {
         address module = abi.decode(data, (address));
 
-        allowedModules[msg.sender][safe][module] = true;
+        $allowedModules[msg.sender][safe][module] = true;
 
         return true;
+    }
+
+    /**
+     * @notice Check if a module is allowed for a given safe.
+     * @param safe The address of the safe.
+     * @param module The address of the module.
+     * @return True if the module is allowed, false otherwise.
+     */
+    function isModuleAllowed(address policyGuard, address safe, address module) external view returns (bool) {
+        return $allowedModules[policyGuard][safe][module];
     }
 }

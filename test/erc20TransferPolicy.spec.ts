@@ -8,7 +8,7 @@ import { deploySafeContracts, deploySafePolicyGuard, deployERC20TransferPolicy, 
 
 describe('ERC20TransferPolicy', function () {
   async function fixture() {
-    const [, owner, recipient, other] = await ethers.getSigners()
+    const [deployer, owner, recipient, other] = await ethers.getSigners()
 
     // Deploy the SafePolicyGuard contract
     const { safePolicyGuard } = await deploySafePolicyGuard()
@@ -32,14 +32,20 @@ describe('ERC20TransferPolicy', function () {
     // Mint some tokens to the Safe
     await token.mint(await safe.getAddress(), ethers.parseEther('1000'))
 
+    // Create an access selector instance
+    const TestAccessSelectorFactory = await ethers.getContractFactory('TestAccessSelector')
+    const accessSelector = await TestAccessSelectorFactory.deploy()
+
     return {
+      deployer,
       owner,
       recipient,
       other,
       safe,
       safePolicyGuard,
       erc20TransferPolicy,
-      token
+      token,
+      accessSelector
     }
   }
 
@@ -312,6 +318,73 @@ describe('ERC20TransferPolicy', function () {
           data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
         })
       ).to.be.revertedWithCustomError(erc20TransferPolicy, 'InvalidOperation')
+    })
+  })
+
+  describe('Recipient Configuration Edge Cases', function () {
+    it('Should handle empty recipient list configuration', async function () {
+      const { erc20TransferPolicy, token, accessSelector } = await loadFixture(fixture)
+
+      const access = await accessSelector.create(
+        await token.getAddress(),
+        token.interface.getFunction('transfer').selector,
+        SafeOperation.Call
+      )
+
+      // Configure with empty recipient list
+      const emptyRecipientData = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['tuple(address recipient, bool allowed)[]'],
+        [[]]
+      )
+
+      await expect(erc20TransferPolicy.configure(ZeroAddress, access, emptyRecipientData)).to.not.be.reverted
+    })
+
+    it('Should handle recipient permission toggle', async function () {
+      const { deployer, erc20TransferPolicy, token, recipient, accessSelector } = await loadFixture(fixture)
+
+      const recipientAddress = await recipient.getAddress()
+      const tokenAddress = await token.getAddress()
+
+      const access = await accessSelector.create(
+        tokenAddress,
+        token.interface.getFunction('transfer').selector,
+        SafeOperation.Call
+      )
+
+      // First, allow the recipient
+      const allowRecipientData = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['tuple(address recipient, bool allowed)[]'],
+        [
+          [
+            {
+              recipient: recipientAddress,
+              allowed: true
+            }
+          ]
+        ]
+      )
+
+      await erc20TransferPolicy.configure(ZeroAddress, access, allowRecipientData)
+      expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
+        .true
+
+      // Then, disallow the same recipient
+      const disallowRecipientData = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['tuple(address recipient, bool allowed)[]'],
+        [
+          [
+            {
+              recipient: recipientAddress,
+              allowed: false
+            }
+          ]
+        ]
+      )
+
+      await expect(erc20TransferPolicy.configure(ZeroAddress, access, disallowRecipientData)).to.not.be.reverted
+      expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
+        .false
     })
   })
 })

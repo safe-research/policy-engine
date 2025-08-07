@@ -154,10 +154,12 @@ abstract contract PolicyEngine is IPolicyEngine {
     ) internal {
         // Creating access selector for a policy
         AccessSelector.T access = AccessSelector.create(target, selector, operation);
-        $policies[safe][access] = policy;
 
         // Configuring policy
         require(IPolicy(policy).configure(safe, access, data), PolicyConfigurationFailed());
+
+        // Update the policy mapping
+        $policies[safe][access] = policy;
 
         emit PolicyConfirmed(safe, target, selector, operation, policy, data);
     }
