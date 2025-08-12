@@ -30,8 +30,7 @@ contract AppSafePolicyGuard is SafePolicyGuard {
     /**
      * @param delay The delay for the configuration change.
      */
-    constructor(uint256 delay) SafePolicyGuard(delay) {
-    }
+    constructor(uint256 delay) SafePolicyGuard(delay) {}
 
     /**
      * @notice Configures and confirms multiple policies for an address.
@@ -43,11 +42,11 @@ contract AppSafePolicyGuard is SafePolicyGuard {
      */
     function configureImmediately(Configuration[] calldata configurations) external override {
         bytes32 configureRoot = keccak256(abi.encode(configurations));
-        
+
         // Store the configurations for this root
         _configureRoots[msg.sender].add(configureRoot);
         _configurations[configureRoot] = configurations;
-        
+
         // Apply the policies immediately
         for (uint256 i = 0; i < configurations.length; i++) {
             _confirmPolicy(
