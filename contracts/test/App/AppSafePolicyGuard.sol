@@ -76,7 +76,7 @@ contract AppSafePolicyGuard is SafePolicyGuard {
      * @param configurations The array of configurations to be applied.
      * @dev This function allows adding the configuration details to the root for the safe app.
      */
-    function complimentRequestConfiguration(Configuration[] calldata configurations) external {
+    function complementRequestConfiguration(Configuration[] calldata configurations) external {
         bytes32 configureRoot = keccak256(abi.encode(configurations));
         require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfiguredYet(configureRoot));
         _configureRoots[msg.sender].add(configureRoot);
