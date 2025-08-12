@@ -97,3 +97,6 @@ tsconfig.tsbuildinfo
 
 # Cursor
 .cursor/
+
+# Excalidraw
+*.excalidraw
