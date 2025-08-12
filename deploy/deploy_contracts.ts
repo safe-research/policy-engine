@@ -2,6 +2,7 @@ import { DeployFunction } from 'hardhat-deploy/types'
 import { promises as fs } from 'node:fs'
 
 const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY ? parseInt(process.env.POLICIES_CONFIG_DELAY) : 0n
+const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : false
 
 type Networks = Record<string, Record<string, string>>
 
@@ -34,13 +35,18 @@ const deploy: DeployFunction = async function ({ getChainId, getNamedAccounts, d
   }
 
   // Guard
-  await deployContract('SafePolicyGuard', [POLICIES_CONFIG_DELAY])
+  if (DEMO) {
+    await deployContract('AppSafePolicyGuard', [POLICIES_CONFIG_DELAY])
+  } else {
+    await deployContract('SafePolicyGuard', [POLICIES_CONFIG_DELAY])
+  }
 
   // Policies
   await deployContract('AllowPolicy')
+  await deployContract('AllowedModulePolicy')
   await deployContract('CoSignerPolicy')
-  await deployContract('ERC20TransferPolicy')
   await deployContract('ERC20ApprovePolicy')
+  await deployContract('ERC20TransferPolicy')
   await deployContract('MultiSendPolicy')
   await deployContract('NativeTransferPolicy')
 

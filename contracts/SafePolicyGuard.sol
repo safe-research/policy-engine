@@ -220,7 +220,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      *      This is a convenience function to avoid having to call `configurePolicy` and then
      *      `confirmPolicy` separately with a delay.
      */
-    function configureImmediately(Configuration[] calldata configurations) external {
+    function configureImmediately(Configuration[] calldata configurations) external virtual {
         for (uint256 i = 0; i < configurations.length; i++) {
             _confirmPolicy(
                 msg.sender,
@@ -238,7 +238,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @param configureRoot The root of the configuration to be applied.
      * @dev This can be used to set multiple policies at once.
      */
-    function requestConfiguration(bytes32 configureRoot) external {
+    function requestConfiguration(bytes32 configureRoot) external virtual {
         require(rootConfigured[msg.sender][configureRoot] == 0, RootAlreadyConfigured(configureRoot));
         rootConfigured[msg.sender][configureRoot] = block.timestamp + DELAY;
         emit RootConfigured(msg.sender, configureRoot, block.timestamp + DELAY);
@@ -251,7 +251,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      *      This is not behind a delay, as only pending configurations can be invalidated, and
      *      this allows invalidating unintended policies immediately before it is confirmed.
      */
-    function invalidateRoot(bytes32 configureRoot) external {
+    function invalidateRoot(bytes32 configureRoot) external virtual {
         require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
         delete rootConfigured[msg.sender][configureRoot];
         emit RootInvalidated(msg.sender, configureRoot);
@@ -262,7 +262,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @param configurations The array of configurations to be applied.
      * @dev This can be used to set multiple policies at once.
      */
-    function applyConfiguration(Configuration[] calldata configurations) external {
+    function applyConfiguration(Configuration[] calldata configurations) external virtual {
         bytes32 configureRoot = keccak256(abi.encode(configurations));
         require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
         require(block.timestamp >= rootConfigured[msg.sender][configureRoot], RootConfigurationPending());
