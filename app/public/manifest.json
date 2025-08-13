@@ -1,0 +1,12 @@
+{
+  "name": "Policy Engine",
+  "description": "A Safe app to configure policies for the Policy Guard to protect Safe users.",
+  "iconPath": "policy_engine.svg",
+  "icons": [
+    {
+      "src": "policy_engine.svg",
+      "sizes": "256x256",
+      "type": "image/svg+xml"
+    }
+  ]
+}
