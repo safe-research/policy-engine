@@ -104,7 +104,7 @@ abstract contract PolicyEngine is IPolicyEngine {
         bytes calldata data,
         Operation operation,
         bytes memory context
-    ) public view returns (address) {
+    ) public view virtual returns (address) {
         (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
         require(policy != address(0), AccessDenied(address(0)));
         try IPolicy(policy).checkTransaction(safe, to, value, data, operation, context, access) returns (
@@ -136,6 +136,16 @@ abstract contract PolicyEngine is IPolicyEngine {
     }
 
     /**
+     * @notice Internal function to update a policy for a given safe and access selector.
+     * @param safe The address of the safe.
+     * @param access The access selector of the policy.
+     * @param policy The address of the policy contract.
+     */
+    function _updatePolicy(address safe, AccessSelector.T access, address policy) internal {
+        $policies[safe][access] = policy;
+    }
+
+    /**
      * @notice Internal function to confirm a policy for a given safe and access selector.
      * @param safe The address of the safe.
      * @param target The target address of the policy.
@@ -151,15 +161,17 @@ abstract contract PolicyEngine is IPolicyEngine {
         Operation operation,
         address policy,
         bytes memory data
-    ) internal {
+    ) internal virtual {
         // Creating access selector for a policy
         AccessSelector.T access = AccessSelector.create(target, selector, operation);
 
         // Update the policy mapping
-        $policies[safe][access] = policy;
+        _updatePolicy(safe, access, policy);
 
         // Configuring policy
-        require(IPolicy(policy).configure(safe, access, data), PolicyConfigurationFailed());
+        if (policy != address(0)) {
+            require(IPolicy(policy).configure(safe, access, data), PolicyConfigurationFailed());
+        }
 
         emit PolicyConfirmed(safe, target, selector, operation, policy, data);
     }

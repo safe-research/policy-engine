@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
-import {
-  POLICY_ENGINE_ADDRESS_GNOSIS,
-  POLICY_ENGINE_ADDRESS_SEPOLIA,
-} from '../utils/constants'
+import { POLICY_ENGINE_ADDRESS } from '../utils/constants'
 
 /**
  * Custom hook to manage Safe connection and Policy Engine address selection
@@ -19,10 +16,8 @@ export const useSafeConnection = () => {
   const selectPolicyEngineAddress = useCallback(async () => {
     try {
       const chainId = (await sdk.safe.getInfo()).chainId
-      if (chainId === 100) {
-        setPolicyEngineAddress(POLICY_ENGINE_ADDRESS_GNOSIS)
-      } else if (chainId === 11155111) {
-        setPolicyEngineAddress(POLICY_ENGINE_ADDRESS_SEPOLIA)
+      if (chainId === 100 || chainId === 11155111 || chainId === 84532) {
+        setPolicyEngineAddress(POLICY_ENGINE_ADDRESS)
       } else {
         setError('Policy Engine not available in this chain')
         return

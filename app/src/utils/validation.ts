@@ -1,13 +1,13 @@
-import { ethers } from 'ethers'
+import { ethers, type AddressLike } from 'ethers'
 
 /**
  * Validates if a string is a valid Ethereum address
  * @param address - The address string to validate
  * @returns true if valid, false otherwise
  */
-export const isValidAddress = (address: string): boolean => {
+export const isValidAddress = (address: string | AddressLike): boolean => {
   try {
-    ethers.getAddress(address)
+    ethers.getAddress(String(address))
     return true
   } catch {
     return false
@@ -52,6 +52,6 @@ export const validateSelector = (
  * @param operation - The operation number to validate
  * @returns true if valid, false otherwise
  */
-export const isValidOperation = (operation: number): boolean => {
-  return operation === 0 || operation === 1
+export const isValidOperation = (operation: bigint): boolean => {
+  return operation === 0n || operation === 1n
 }
