@@ -1,6 +1,18 @@
+/**
+ * Safe Research Components
+ *
+ * Provides components and information related to Safe's research initiative.
+ * Contains utility components for external links and research announcements.
+ */
+
 import { Alert, Link, Typography } from '@mui/material'
 import type { ReactNode } from 'react'
 
+/**
+ * Custom link component with consistent styling for external links
+ * @param to - URL to navigate to
+ * @param children - Link content
+ */
 export const CustomLink = ({
   to,
   children,

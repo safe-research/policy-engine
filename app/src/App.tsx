@@ -19,8 +19,7 @@ import {
 import {
   ALLOW_POLICY_ADDRESS,
   ALLOWED_MODULE_POLICY_ADDRESS,
-  CONTRACT_INTERFACE_ABI,
-  COSIGNER_ADDRESS,
+  CONTRACT_INTERFACE,
   COSIGNER_POLICY_ADDRESS,
   ERC20_APPROVE_POLICY_ADDRESS,
   ERC20_TRANSFER_POLICY_ADDRESS,
@@ -47,9 +46,8 @@ import {
   decodeSelector,
   encodeData,
   getAddressName,
+  getCosignerAddress,
 } from './utils/helper'
-
-const CONTRACT_INTERFACE = new ethers.Interface(CONTRACT_INTERFACE_ABI)
 
 const call = async (
   sdk: SafeAppsSDK,
@@ -373,7 +371,7 @@ function App() {
           policy: COSIGNER_POLICY_ADDRESS,
           data: ethers.AbiCoder.defaultAbiCoder().encode(
             ['address'],
-            [COSIGNER_ADDRESS]
+            [getCosignerAddress()]
           ),
         },
         {
