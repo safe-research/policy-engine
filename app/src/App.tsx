@@ -18,16 +18,13 @@ import {
 } from '@mui/material'
 import {
   ALLOW_POLICY_ADDRESS,
-  ALLOWED_MODULE_POLICY_ADDRESS,
   CONTRACT_INTERFACE,
   COSIGNER_POLICY_ADDRESS,
-  ERC20_APPROVE_POLICY_ADDRESS,
-  ERC20_TRANSFER_POLICY_ADDRESS,
   GUARD_STORAGE_SLOT,
   MILLISECONDS_IN_SECOND,
   MULTISEND_CALL_ONLY,
   MULTISEND_POLICY_ADDRESS,
-  NATIVE_TRANSFER_POLICY_ADDRESS,
+  POLICY_ADDRESS_NAME,
   ZERO_SELECTOR,
 } from './utils/constants'
 import type { FormData, AccessInfo, PendingInfo } from './utils/types'
@@ -494,7 +491,7 @@ function App() {
       const data = encodeData(formData.policy, formData.data)
 
       // Set default selector if empty (For fallback)
-      const selector = formData.selector || '0x00000000'
+      const selector = formData.selector || ZERO_SELECTOR
 
       const configurations: FormData[] = [
         {
@@ -880,25 +877,12 @@ function App() {
                     label="Policy"
                     required
                   >
-                    <option value={ALLOW_POLICY_ADDRESS}>Allow Policy</option>
-                    <option value={ALLOWED_MODULE_POLICY_ADDRESS}>
-                      Allow Module Policy
-                    </option>
-                    <option value={COSIGNER_POLICY_ADDRESS}>
-                      Cosigner Policy
-                    </option>
-                    <option value={ERC20_APPROVE_POLICY_ADDRESS}>
-                      ERC20 Approve Policy
-                    </option>
-                    <option value={ERC20_TRANSFER_POLICY_ADDRESS}>
-                      ERC20 Transfer Policy
-                    </option>
-                    <option value={MULTISEND_POLICY_ADDRESS}>
-                      Multisend Policy
-                    </option>
-                    <option value={NATIVE_TRANSFER_POLICY_ADDRESS}>
-                      Native Transfer Policy
-                    </option>
+                    {/* Write a for loop going through POLICY_ADDRESS_NAME */}
+                    {POLICY_ADDRESS_NAME.map(policy => (
+                      <option key={policy.address} value={policy.address}>
+                        {policy.name}
+                      </option>
+                    ))}
                   </Select>
                   <Button
                     variant="contained"
