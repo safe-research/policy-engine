@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity =0.8.28;
 
-import {SafePolicyGuard, AccessSelector} from "../../SafePolicyGuard.sol";
+import {SafePolicyGuard, AccessSelector, Operation} from "../../SafePolicyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {IPolicy} from "../../interfaces/IPolicy.sol";
+// solhint-disable-next-line no-unused-import
+import {IPolicyEngine} from "../../interfaces/IPolicyEngine.sol";
 
 /**
  * @title App Safe Policy Guard
@@ -11,16 +14,27 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 contract AppSafePolicyGuard is SafePolicyGuard {
     using AccessSelector for AccessSelector.T;
     using EnumerableSet for EnumerableSet.Bytes32Set;
+    using EnumerableSet for EnumerableSet.UintSet;
 
     /**
-     * @notice Configuration roots which are either pending or confirmed.
+     * @notice Configuration roots which are pending.
      */
-    mapping(address => EnumerableSet.Bytes32Set) private _configureRoots;
+    mapping(address safe => EnumerableSet.Bytes32Set) private _configureRoots;
 
     /**
      * @notice Configuration mapping for each root.
      */
-    mapping(bytes32 => Configuration[]) private _configurations;
+    mapping(bytes32 configureRoot => Configuration[]) private _configurations;
+
+    /**
+     * @notice Mapping of safe to it's approved access selectors.
+     */
+    mapping(address safe => EnumerableSet.UintSet) private _accesses;
+
+    /**
+     * @notice Mapping of safe to it's approved access data.
+     */
+    mapping(address safe => mapping(uint256 access => bytes data)) private _accessData;
 
     /**
      * @notice Thrown when a root is not configured yet.
@@ -33,31 +47,50 @@ contract AppSafePolicyGuard is SafePolicyGuard {
     constructor(uint256 delay) SafePolicyGuard(delay) {}
 
     /**
-     * @notice Configures and confirms multiple policies for an address.
-     * @param configurations The array of configurations to be applied.
-     * @dev This does not have to check if the guard is enabled, as if the guard is set,
-     *      then this tx will fail in `checkTransaction`.
-     *      This is a convenience function to avoid having to call `configurePolicy` and then
-     *      `confirmPolicy` separately with a delay.
+     * @dev TODO: Consider the security considerations of calling `checkTransaction` as a Safe transaction,
+     *      this can matter because the Safe can potentially modify state and might lead to unexpected interactions.
      */
-    function configureImmediately(Configuration[] calldata configurations) external override {
-        bytes32 configureRoot = keccak256(abi.encode(configurations));
+    function _allowedCalls(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Operation operation
+    ) internal view override returns (bool) {
+        bytes4 selector = _decodeSelector(data);
 
-        // Store the configurations for this root
-        _configureRoots[msg.sender].add(configureRoot);
-        _configurations[configureRoot] = configurations;
+        // Invalidate Root
+        bool invalidateRootCall = to == address(this) &&
+            value == 0 &&
+            selector == this.invalidateRoot.selector &&
+            operation == Operation.CALL;
 
-        // Apply the policies immediately
-        for (uint256 i = 0; i < configurations.length; i++) {
-            _confirmPolicy(
-                msg.sender,
-                configurations[i].target,
-                configurations[i].selector,
-                configurations[i].operation,
-                configurations[i].policy,
-                configurations[i].data
-            );
+        // Configure or confirm policy
+        bool requestOrApplyConfiguration = to == address(this) &&
+            value == 0 &&
+            (selector == this.requestConfiguration.selector ||
+                selector == this.complementRequestConfiguration.selector ||
+                selector == this.applyConfiguration.selector) &&
+            operation == Operation.CALL;
+
+        return requestOrApplyConfiguration || invalidateRootCall;
+    }
+
+    /**
+     * @inheritdoc IPolicyEngine
+     * @dev This is overridden to handle `MultiSend` transactions.
+     */
+    function checkTransaction(
+        address safe,
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Operation operation,
+        bytes memory context
+    ) public view override returns (address) {
+        if (_allowedCalls(to, value, data, operation)) {
+            return address(0);
         }
+        return super.checkTransaction(safe, to, value, data, operation, context);
     }
 
     /**
@@ -94,6 +127,7 @@ contract AppSafePolicyGuard is SafePolicyGuard {
         require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
         delete rootConfigured[msg.sender][configureRoot];
         _configureRoots[msg.sender].remove(configureRoot);
+        delete _configurations[configureRoot];
         emit RootInvalidated(msg.sender, configureRoot);
     }
 
@@ -107,6 +141,8 @@ contract AppSafePolicyGuard is SafePolicyGuard {
         require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
         require(block.timestamp >= rootConfigured[msg.sender][configureRoot], RootConfigurationPending());
         delete rootConfigured[msg.sender][configureRoot];
+        _configureRoots[msg.sender].remove(configureRoot);
+        delete _configurations[configureRoot];
         for (uint256 i = 0; i < configurations.length; i++) {
             _confirmPolicy(
                 msg.sender,
@@ -117,6 +153,46 @@ contract AppSafePolicyGuard is SafePolicyGuard {
                 configurations[i].data
             );
         }
+    }
+
+    /**
+     * @notice Internal function to confirm a policy for a given safe and access selector.
+     * @param safe The address of the safe.
+     * @param target The target address of the policy.
+     * @param selector The function selector of the policy.
+     * @param operation The operation type of the policy.
+     * @param policy The address of the policy contract.
+     * @param data Additional data for the policy configuration.
+     */
+    function _confirmPolicy(
+        address safe,
+        address target,
+        bytes4 selector,
+        Operation operation,
+        address policy,
+        bytes memory data
+    ) internal override {
+        // Creating access selector for a policy
+        AccessSelector.T access = AccessSelector.create(target, selector, operation);
+
+        // Update the policy mapping
+        _updatePolicy(safe, access, policy);
+
+        if (policy != address(0)) {
+            _accesses[safe].add(AccessSelector.T.unwrap(access));
+            _accessData[safe][AccessSelector.T.unwrap(access)] = data;
+        } else {
+            // Remove from tracking when policy is set to zero address
+            _accesses[safe].remove(AccessSelector.T.unwrap(access));
+            delete _accessData[safe][AccessSelector.T.unwrap(access)];
+        }
+
+        // Configuring policy
+        if (policy != address(0)) {
+            require(IPolicy(policy).configure(safe, access, data), PolicyConfigurationFailed());
+        }
+
+        emit PolicyConfirmed(safe, target, selector, operation, policy, data);
     }
 
     /**
@@ -135,5 +211,32 @@ contract AppSafePolicyGuard is SafePolicyGuard {
      */
     function getConfigurationRoots(address safe) external view returns (bytes32[] memory) {
         return _configureRoots[safe].values();
+    }
+
+    /**
+     * @notice Gets the accesses for a given safe address.
+     * @param safe The safe address.
+     * @return The array of access selectors as uint256 values.
+     */
+    function getAccesses(address safe) external view returns (uint256[] memory) {
+        return _accesses[safe].values();
+    }
+
+    /**
+     * @notice Gets the access information for a given access selector.
+     * @param access The access selector as a uint256 value.
+     * @return target The target address.
+     * @return selector The function selector.
+     * @return operation The operation type.
+     */
+    function getAccessInfo(
+        address safe,
+        uint256 access
+    ) external view returns (address target, bytes4 selector, Operation operation, bytes memory data) {
+        AccessSelector.T accessSelector = AccessSelector.T.wrap(access);
+        target = AccessSelector.getTarget(accessSelector);
+        selector = AccessSelector.getSelector(accessSelector);
+        operation = AccessSelector.getOperation(accessSelector);
+        data = _accessData[safe][access];
     }
 }

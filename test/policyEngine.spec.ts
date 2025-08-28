@@ -139,15 +139,63 @@ describe('PolicyEngine Edge Cases', function () {
         ])
       })
 
-      const [_retrievedAccess, retrievedPolicy] = await safePolicyGuard.getPolicy(
-        await safe.getAddress(),
-        target,
-        selector,
-        operation
-      )
+      const [, retrievedPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
 
       // The policy should be the second one now (overwritten)
       expect(retrievedPolicy).to.equal(await secondMockPolicy.getAddress())
+    })
+
+    it('Should handle clearing policy correctly', async function () {
+      const { owner, safe, safePolicyGuard, mockPolicy } = await loadFixture(fixture)
+
+      const target = ZeroAddress
+      const selector = randomSelector()
+      const operation = SafeOperation.Call
+
+      // Configure first policy through Safe transaction
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [
+            {
+              target,
+              selector,
+              operation,
+              policy: await mockPolicy.getAddress(),
+              data: '0x'
+            }
+          ]
+        ])
+      })
+
+      // Verify first policy is set
+      const [, firstPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
+      expect(firstPolicy).to.equal(await mockPolicy.getAddress())
+
+      // Configure second policy for same access selector (should overwrite)
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [
+            {
+              target,
+              selector,
+              operation,
+              policy: ZeroAddress,
+              data: '0x'
+            }
+          ]
+        ])
+      })
+
+      const [, retrievedPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
+
+      // The policy should be the Zero Address now (cleared)
+      expect(retrievedPolicy).to.equal(ZeroAddress)
     })
   })
 

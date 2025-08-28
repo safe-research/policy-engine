@@ -111,7 +111,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         uint256 value,
         bytes calldata data,
         Operation operation
-    ) internal view returns (bool) {
+    ) internal view virtual returns (bool) {
         bytes4 selector = _decodeSelector(data);
 
         // Invalidate Root

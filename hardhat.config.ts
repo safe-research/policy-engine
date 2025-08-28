@@ -81,7 +81,15 @@ const config: HardhatUserConfig = {
   networks: {
     sepolia: {
       ...sharedNetworkConfig,
-      url: 'https://1rpc.io/sepolia'
+      url: 'https://sepolia.drpc.org'
+    },
+    gnosis: {
+      ...sharedNetworkConfig,
+      url: 'https://gnosis.drpc.org'
+    },
+    baseSepolia: {
+      ...sharedNetworkConfig,
+      url: 'https://base-sepolia.drpc.org'
     }
   },
   deterministicDeployment,
@@ -96,6 +104,9 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: ETHERSCAN_API_KEY
+  },
+  sourcify: {
+    enabled: true
   }
 }
 

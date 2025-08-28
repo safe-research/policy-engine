@@ -1,12 +1,14 @@
 import { DeployFunction } from 'hardhat-deploy/types'
 import { promises as fs } from 'node:fs'
 
-const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY ? parseInt(process.env.POLICIES_CONFIG_DELAY) : 0n
+const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY
+  ? BigInt(parseInt(process.env.POLICIES_CONFIG_DELAY))
+  : 3600n
 const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : false
 
 type Networks = Record<string, Record<string, string>>
 
-const deploy: DeployFunction = async function ({ getChainId, getNamedAccounts, deployments, network }) {
+const deploy: DeployFunction = async function ({ run, getChainId, getNamedAccounts, deployments, network }) {
   const { deployer } = await getNamedAccounts()
   const chainId = await getChainId()
 
@@ -28,7 +30,20 @@ const deploy: DeployFunction = async function ({ getChainId, getNamedAccounts, d
       ...networks[chainId],
       [contract]: address
     }
+
+    // Verify contracts
+    if (network.name !== 'hardhat' && network.name !== 'localhost' && process.env.ETHERSCAN_API_KEY) {
+      try {
+        await run('verify:verify', {
+          address: address,
+          constructorArguments: args
+        })
+      } catch (error) {
+        console.error(`Verification failed for ${contract} at ${address}:`, error)
+      }
+    }
   }
+
   const recordNetworks = () => {
     const json = JSON.stringify(networks, null, 2) + '\n'
     return fs.writeFile('./networks.json', json, 'utf-8')
