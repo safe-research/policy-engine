@@ -877,7 +877,6 @@ function App() {
                     label="Policy"
                     required
                   >
-                    {/* Write a for loop going through POLICY_ADDRESS_NAME */}
                     {POLICY_ADDRESS_NAME.map(policy => (
                       <option key={policy.address} value={policy.address}>
                         {policy.name}
