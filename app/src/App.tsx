@@ -637,7 +637,7 @@ function App() {
           target="_blank"
         >
           <img
-            src={'./policy-engine.svg'}
+            src={'../public/policy-engine.svg'}
             className="logo"
             alt="Policy Engine logo"
           />

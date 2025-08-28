@@ -1,6 +1,8 @@
 > [!WARNING]
 > Code in this repository is not audited and may contain serious security holes. Use at your own risk.
 
+![Policy Engine](./app/public/policy-engine.svg)
+
 # Safe{Policies}
 
 This sub-package contains an on-chain policy engine for the Safe smart account. It implements a fine-grained and extensible mandatory access control system on transactions.
