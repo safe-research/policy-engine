@@ -1,6 +1,7 @@
 export { deploy as deploySafeContracts } from './SafeContracts'
 export { deploy as deploySafePolicyGuard } from './SafePolicyGuard'
 export { deploy as deployAllowPolicy } from './AllowPolicy'
+export { deploy as deployDenyPolicy } from './DenyPolicy'
 export { deploy as deployAllowedModulePolicy } from './AllowedModulePolicy'
 export { deploy as deployERC20ApprovePolicy } from './ERC20ApprovePolicy'
 export { deploy as deployERC20TransferPolicy } from './ERC20TransferPolicy'
