@@ -14,6 +14,7 @@ contract DenyPolicy is IPolicy {
      * @dev This policy always returns zero selector for a particular access selector.
      *      This is to deny a certain transaction always.
      */
+    // solhint-disable no-empty-blocks
     function checkTransaction(
         address,
         address,
@@ -23,6 +24,7 @@ contract DenyPolicy is IPolicy {
         bytes calldata,
         AccessSelector.T
     ) external pure override returns (bytes4 magicValue) {}
+    // solhint-enable no-empty-blocks
 
     /**
      * @inheritdoc IPolicy

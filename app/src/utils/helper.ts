@@ -152,7 +152,6 @@ export const call = async (
   method: string,
   params: unknown[],
   returnArray: boolean = false
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> => {
   const resp = await sdk.eth.call([
     {
