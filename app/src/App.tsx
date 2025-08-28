@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import type { BaseTransaction } from '@safe-global/safe-apps-sdk'
-import SafeAppsSDK, { Operation } from '@safe-global/safe-apps-sdk'
+import { Operation } from '@safe-global/safe-apps-sdk'
 import { ethers, ZeroAddress } from 'ethers'
 import Button from '@mui/material/Button'
 import {
@@ -42,32 +42,13 @@ import {
   SafeResearchFooter,
 } from './components/SafeResearch'
 import {
+  call,
   decodeData,
   decodeSelector,
   encodeData,
   getAddressName,
   getCosignerAddress,
 } from './utils/helper'
-
-const call = async (
-  sdk: SafeAppsSDK,
-  address: string,
-  method: string,
-  params: any[],
-  returnArray: boolean = false
-): Promise<any> => {
-  const resp = await sdk.eth.call([
-    {
-      to: address,
-      data: CONTRACT_INTERFACE.encodeFunctionData(method, params),
-    },
-  ])
-  if (returnArray) {
-    return CONTRACT_INTERFACE.decodeFunctionResult(method, resp)
-  } else {
-    return CONTRACT_INTERFACE.decodeFunctionResult(method, resp)[0]
-  }
-}
 
 function App() {
   const [loading, setLoading] = useState(false)

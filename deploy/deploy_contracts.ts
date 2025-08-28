@@ -1,7 +1,9 @@
 import { DeployFunction } from 'hardhat-deploy/types'
 import { promises as fs } from 'node:fs'
 
-const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY ? parseInt(process.env.POLICIES_CONFIG_DELAY) : 3600n
+const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY
+  ? BigInt(parseInt(process.env.POLICIES_CONFIG_DELAY))
+  : 3600n
 const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : false
 
 type Networks = Record<string, Record<string, string>>
