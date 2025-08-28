@@ -21,6 +21,7 @@ import {
   ALLOWED_MODULE_POLICY_ADDRESS,
   CONTRACT_INTERFACE,
   COSIGNER_POLICY_ADDRESS,
+  DENY_POLICY_ADDRESS,
   ERC20_APPROVE_POLICY_ADDRESS,
   ERC20_TRANSFER_POLICY_ADDRESS,
   MULTISEND_POLICY_ADDRESS,
@@ -89,6 +90,7 @@ export function decodeData(policy: AddressLike, data: BytesLike): string {
   }
   if (
     policy == ALLOW_POLICY_ADDRESS ||
+    policy == DENY_POLICY_ADDRESS ||
     policy == MULTISEND_POLICY_ADDRESS ||
     policy == NATIVE_TRANSFER_POLICY_ADDRESS
   ) {

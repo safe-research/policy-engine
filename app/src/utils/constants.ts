@@ -48,6 +48,13 @@ export const ALLOW_POLICY_ADDRESS = ethers.getAddress(
 )
 
 /**
+ * Deny Policy - Denies access to specified functions
+ */
+export const DENY_POLICY_ADDRESS = ethers.getAddress(
+  '0x0000000000000000000000000000000000000000'
+)
+
+/**
  * Allowed Module Policy - Controls which Safe modules can be used
  */
 export const ALLOWED_MODULE_POLICY_ADDRESS = ethers.getAddress(
@@ -153,22 +160,27 @@ export const MILLISECONDS_IN_SECOND = 1000n
 export const ZERO_SELECTOR = '0x00000000' as const
 
 /** List of known function selectors with their human-readable names */
-export const ADDRESS_NAME = [
-  { address: POLICY_ENGINE_ADDRESS, name: 'Policy Engine' },
+export const POLICY_ADDRESS_NAME = [
   { address: ALLOW_POLICY_ADDRESS, name: 'Allow Policy' },
+  { address: DENY_POLICY_ADDRESS, name: 'Deny Policy' },
   { address: ALLOWED_MODULE_POLICY_ADDRESS, name: 'Allowed Module Policy' },
   { address: COSIGNER_POLICY_ADDRESS, name: 'Cosigner Policy' },
   { address: ERC20_APPROVE_POLICY_ADDRESS, name: 'ERC20 Approve Policy' },
   { address: ERC20_TRANSFER_POLICY_ADDRESS, name: 'ERC20 Transfer Policy' },
   { address: MULTISEND_POLICY_ADDRESS, name: 'MultiSend Policy' },
   { address: NATIVE_TRANSFER_POLICY_ADDRESS, name: 'Native Transfer Policy' },
+]
+
+export const ADDRESS_NAME = [
+  ...POLICY_ADDRESS_NAME,
+  { address: POLICY_ENGINE_ADDRESS, name: 'Policy Engine' },
   { address: MULTISEND_CALL_ONLY, name: 'MultiSendCallOnly v1.4.1' },
   { address: ethers.ZeroAddress, name: 'Zero Address' },
 ]
 
 /** List of known function selectors with their human-readable names */
 export const SELECTOR_NAME = [
-  { selector: '0x00000000', name: 'Zero Selector' },
+  { selector: ZERO_SELECTOR, name: 'Zero Selector' },
   { selector: '0x8d80ff0a', name: 'multiSend(bytes)' },
   { selector: '0xa9059cbb', name: 'transfer(address,uint256)' },
   { selector: '0x095ea7b3', name: 'approve(address,uint256)' },
