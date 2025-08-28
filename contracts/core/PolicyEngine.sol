@@ -95,6 +95,20 @@ abstract contract PolicyEngine is IPolicyEngine {
     }
 
     /**
+     * @dev TODO: Consider the security considerations of calling `checkTransaction` as a Safe transaction,
+     *      this can matter because the Safe can potentially modify state and might lead to unexpected interactions.
+     *      This will be overridden in the inherited contracts to allow certain actions without any configured policy.
+     */
+    // solhint-disable no-empty-blocks
+    function _allowedCalls(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Operation operation
+    ) internal view virtual returns (bool) {}
+    // solhint-enable no-empty-blocks
+
+    /**
      * @inheritdoc IPolicyEngine
      */
     function checkTransaction(
@@ -105,6 +119,10 @@ abstract contract PolicyEngine is IPolicyEngine {
         Operation operation,
         bytes memory context
     ) public view virtual returns (address) {
+        if (_allowedCalls(to, value, data, operation)) {
+            return address(0);
+        }
+
         (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
         require(policy != address(0), AccessDenied(address(0)));
         try IPolicy(policy).checkTransaction(safe, to, value, data, operation, context, access) returns (
