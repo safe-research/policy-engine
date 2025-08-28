@@ -103,7 +103,25 @@ const config: HardhatUserConfig = {
     deployer: 0
   },
   etherscan: {
-    apiKey: ETHERSCAN_API_KEY
+    apiKey: ETHERSCAN_API_KEY,
+    customChains: [
+      {
+        network: 'Gnosis',
+        chainId: 100,
+        urls: {
+          apiURL: 'https://api.etherscan.io/v2/api',
+          browserURL: 'https://gnosisscan.io/'
+        }
+      },
+      {
+        network: 'Base Sepolia Testnet',
+        chainId: 84532,
+        urls: {
+          apiURL: 'https://api.etherscan.io/v2/api',
+          browserURL: 'https://sepolia.basescan.org/'
+        }
+      }
+    ]
   },
   sourcify: {
     enabled: true

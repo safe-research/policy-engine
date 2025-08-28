@@ -37,7 +37,7 @@ export const SUPPORTED_CHAINS = [100, 11155111, 84532]
  * Deployed on supported networks with the same address
  */
 export const POLICY_ENGINE_ADDRESS = ethers.getAddress(
-  '0x1392AE18434d5040D032E29C9c900489d1d3Ba92'
+  '0x1Edd8486031b69205C0fD84924DFe171C6c6688E'
 )
 
 /**
@@ -51,7 +51,7 @@ export const ALLOW_POLICY_ADDRESS = ethers.getAddress(
  * Deny Policy - Denies access to specified functions
  */
 export const DENY_POLICY_ADDRESS = ethers.getAddress(
-  '0x0000000000000000000000000000000000000000'
+  '0xA78478404a909d9Fc4A693ed6c91508d0E6a071a'
 )
 
 /**
