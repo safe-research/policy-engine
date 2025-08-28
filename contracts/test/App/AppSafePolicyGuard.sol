@@ -76,24 +76,6 @@ contract AppSafePolicyGuard is SafePolicyGuard {
     }
 
     /**
-     * @inheritdoc IPolicyEngine
-     * @dev This is overridden to handle `MultiSend` transactions.
-     */
-    function checkTransaction(
-        address safe,
-        address to,
-        uint256 value,
-        bytes calldata data,
-        Operation operation,
-        bytes memory context
-    ) public view override returns (address) {
-        if (_allowedCalls(to, value, data, operation)) {
-            return address(0);
-        }
-        return super.checkTransaction(safe, to, value, data, operation, context);
-    }
-
-    /**
      * @notice Requests a policy configuration change.
      * @param configureRoot The root of the configuration to be applied.
      * @dev This can be used to set multiple policies at once.

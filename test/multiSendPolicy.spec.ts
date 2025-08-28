@@ -14,7 +14,8 @@ import {
   TransactionParametersWithNonce,
   buildSafeTransaction,
   buildContractCall,
-  buildMultiSendSafeTx
+  buildMultiSendSafeTx,
+  getConfigurationRoot
 } from '../src/utils'
 import {
   deploySafeContracts,
@@ -324,6 +325,93 @@ describe('MultiSendPolicy', function () {
       )
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
         .withArgs(await multiSendPolicy.getAddress())
+    })
+
+    it('Should pass with multiple guard transactions to configure without any configured policy', async function () {
+      const { owner, safePolicyGuard, safe, multiSendPolicy, multiSend, allowPolicy, coSignerPolicy } =
+        await loadFixture(fixture)
+
+      // Get function selectors
+      const multiSendSelector = multiSend.interface.getFunction('multiSend')?.selector
+
+      const multiSendConfiguration = [
+        // Configure policy for MultiSend
+        createConfiguration({
+          target: await multiSend.getAddress(),
+          selector: multiSendSelector,
+          operation: SafeOperation.DelegateCall,
+          policy: await multiSendPolicy.getAddress()
+        })
+      ]
+
+      // Configure the multiSend policy
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [multiSendConfiguration])
+      })
+
+      // Enable the guard on safe
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      })
+
+      const configurationCall = [
+        createConfiguration({
+          operation: SafeOperation.Call,
+          policy: await allowPolicy.getAddress()
+        })
+      ]
+
+      const configurationDelegateCall = [
+        createConfiguration({
+          operation: SafeOperation.DelegateCall,
+          policy: await coSignerPolicy.getAddress()
+        })
+      ]
+
+      // Create transactions array
+      const txs = [
+        await buildContractCall(safePolicyGuard, 'requestConfiguration', [getConfigurationRoot(configurationCall)], 0),
+        await buildContractCall(
+          safePolicyGuard,
+          'requestConfiguration',
+          [getConfigurationRoot(configurationDelegateCall)],
+          0
+        )
+      ]
+
+      // Build MultiSend transaction
+      const safeTx = await buildMultiSendSafeTx(multiSend, txs, await safe.nonce())
+
+      // Both roots should be unconfigured at this point
+      expect(
+        await safePolicyGuard.rootConfigured(await safe.getAddress(), getConfigurationRoot(configurationCall))
+      ).to.be.eq(0n)
+      expect(
+        await safePolicyGuard.rootConfigured(await safe.getAddress(), getConfigurationRoot(configurationDelegateCall))
+      ).to.be.eq(0n)
+
+      // Execute the MultiSend transaction through the Safe
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await multiSend.getAddress(),
+        data: safeTx.data,
+        operation: SafeOperation.DelegateCall
+      })
+
+      // Both roots should be configured at this point
+      expect(
+        await safePolicyGuard.rootConfigured(await safe.getAddress(), getConfigurationRoot(configurationCall))
+      ).to.be.gt(0n)
+      expect(
+        await safePolicyGuard.rootConfigured(await safe.getAddress(), getConfigurationRoot(configurationDelegateCall))
+      ).to.be.gt(0n)
     })
   })
 

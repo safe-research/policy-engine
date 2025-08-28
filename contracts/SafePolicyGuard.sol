@@ -111,7 +111,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         uint256 value,
         bytes calldata data,
         Operation operation
-    ) internal view virtual returns (bool) {
+    ) internal view virtual override returns (bool) {
         bytes4 selector = _decodeSelector(data);
 
         // Invalidate Root
@@ -150,10 +150,6 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // transaction that is rarely used, and therefore should not be covered by the access
         // control system.
         require(gasPrice == 0, NonZeroGasPrice());
-
-        if (_allowedCalls(to, value, data, operation)) {
-            return;
-        }
 
         checkTransaction(msg.sender, to, value, data, operation, _decodeContext(signatures));
     }

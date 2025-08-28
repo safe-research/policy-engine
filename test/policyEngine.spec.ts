@@ -3,7 +3,14 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createSafe, SafeOperation, execTransaction, randomAddress, randomSelector } from '../src/utils'
+import {
+  createSafe,
+  SafeOperation,
+  execTransaction,
+  randomAddress,
+  randomSelector,
+  createConfiguration
+} from '../src/utils'
 import { deploySafeContracts, deploySafePolicyGuard, deployMockPolicy } from './deploy'
 
 describe('PolicyEngine Edge Cases', function () {
@@ -99,44 +106,34 @@ describe('PolicyEngine Edge Cases', function () {
       const MockPolicyFactory = await ethers.getContractFactory('MockPolicy')
       const secondMockPolicy = await MockPolicyFactory.deploy()
 
+      // Create configuration for first policy
+      const firstConfiguration = [
+        createConfiguration({ target, selector, operation, policy: await mockPolicy.getAddress() })
+      ]
+
       // Configure first policy through Safe transaction
       await execTransaction({
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            {
-              target,
-              selector,
-              operation,
-              policy: await mockPolicy.getAddress(),
-              data: '0x'
-            }
-          ]
-        ])
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [firstConfiguration])
       })
 
       // Verify first policy is set
       const [, firstPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
       expect(firstPolicy).to.equal(await mockPolicy.getAddress())
 
+      // Configure second policy
+      const secondConfiguration = [
+        createConfiguration({ target, selector, operation, policy: await secondMockPolicy.getAddress() })
+      ]
+
       // Configure second policy for same access selector (should overwrite)
       await execTransaction({
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            {
-              target,
-              selector,
-              operation,
-              policy: await secondMockPolicy.getAddress(),
-              data: '0x'
-            }
-          ]
-        ])
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [secondConfiguration])
       })
 
       const [, retrievedPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
@@ -152,44 +149,32 @@ describe('PolicyEngine Edge Cases', function () {
       const selector = randomSelector()
       const operation = SafeOperation.Call
 
+      const configuration = [
+        createConfiguration({ target, selector, operation, policy: await mockPolicy.getAddress() })
+      ]
+
       // Configure first policy through Safe transaction
       await execTransaction({
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            {
-              target,
-              selector,
-              operation,
-              policy: await mockPolicy.getAddress(),
-              data: '0x'
-            }
-          ]
-        ])
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
       })
 
       // Verify first policy is set
       const [, firstPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
       expect(firstPolicy).to.equal(await mockPolicy.getAddress())
 
+      const clearConfiguration = [
+        createConfiguration({ target, selector, operation, policy: ZeroAddress }) // Clear policy
+      ]
+
       // Configure second policy for same access selector (should overwrite)
       await execTransaction({
         owners: [owner],
         safe,
         to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            {
-              target,
-              selector,
-              operation,
-              policy: ZeroAddress,
-              data: '0x'
-            }
-          ]
-        ])
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [clearConfiguration])
       })
 
       const [, retrievedPolicy] = await safePolicyGuard.getPolicy(await safe.getAddress(), target, selector, operation)
