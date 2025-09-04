@@ -459,6 +459,9 @@ function App() {
         return
       }
 
+      // If target is empty, set it to ZeroAddress (For fallback)
+      formData.target = formData.target ? formData.target : ZeroAddress
+
       // Validate 'target' address
       if (!isValidAddress(formData.target)) {
         setErrorMessage('Invalid "Target" address format')
@@ -788,7 +791,6 @@ function App() {
                     id="target"
                     name="target"
                     label="Target Address"
-                    required
                   />
                   <TextField
                     slotProps={{
