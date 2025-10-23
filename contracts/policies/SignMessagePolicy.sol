@@ -29,9 +29,9 @@ contract SignMessagePolicy is IPolicy {
     /**
      * @dev Mapping of allowed domain hashes and primary type hashes for each Safe.
      */
-    // solhint-disable-next-line private-vars-leading-underscore
-    mapping(address safe => mapping(bytes32 domainHash => mapping(bytes32 primaryTypeHash => bool allowed)))
-        private _domains;
+    // solhint-disable-next-line private-vars-leading-underscore, max-line-length
+    mapping(address policyGuard => mapping(address safe => mapping(bytes32 domainHash => mapping(bytes32 primaryTypeHash => bool allowed))))
+        private $domains;
 
     /**
      * @dev Error indicating the domain or type hash is not allowed.
@@ -60,7 +60,7 @@ contract SignMessagePolicy is IPolicy {
             context,
             (bytes32, bytes32, bytes)
         );
-        require(_domains[safe][domainHash][primaryTypeHash], DomainOrTypeNotAllowed());
+        require($domains[msg.sender][safe][domainHash][primaryTypeHash], DomainOrTypeNotAllowed());
         bytes32 messageHash = keccak256(
             abi.encodePacked("\x19\x01", domainHash, keccak256(abi.encodePacked(primaryTypeHash, structData)))
         );
@@ -79,7 +79,7 @@ contract SignMessagePolicy is IPolicy {
     function configure(address safe, AccessSelector.T selector, bytes memory data) external override returns (bool) {
         SignatureDomain[] memory domains = abi.decode(data, (SignatureDomain[]));
         for (uint256 i = 0; i < domains.length; i++) {
-            _domains[safe][domains[i].domainHash][domains[i].primaryTypeHash] = true;
+            $domains[msg.sender][safe][domains[i].domainHash][domains[i].primaryTypeHash] = true;
         }
         return
             selector.getOperation() == Operation.DELEGATECALL &&
