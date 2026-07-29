@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "license": "LGPL-3.0-only",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "hardhat clean && hardhat compile",
     "build:ts:typecheck": "tsc --noEmit",
@@ -46,7 +49,7 @@
     "eslint-plugin-no-only-tests": "^3.3.0",
     "eslint-plugin-prettier": "^5.2.3",
     "ethers": "^6.13.5",
-    "hardhat": "^2.22.19",
+    "hardhat": "^2.29.0",
     "hardhat-gas-reporter": "^1.0.10",
     "prettier": "^3.5.0",
     "prettier-plugin-solidity": "^1.4.2",
