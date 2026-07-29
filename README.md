@@ -26,9 +26,24 @@ interface IPolicy {
 }
 ```
 
-A policy is a stripped down version of the Safe transaction guard interface, supporting only the pre-transaction checks, as well as only the common transaction data to regular Safe transactions and Safe module transactions. This means that Safe transaction gas refund parameters cannot be checked, and to work around this, we require that `gasPrice == 0` in the Safe guard to ensure that there is no gas refund payment. Also worth noting, is that the policy is **not** a `view` method, and is allowed to make state changes. This allows use cases for policies that do some accounting (for example, a ERC-20 transfer policy with daily limits).
+A policy is a stripped down version of the Safe transaction guard interface, supporting only the pre-transaction checks, as well as only the common transaction data to regular Safe transactions and Safe module transactions. This means that Safe transaction gas refund parameters cannot be checked, and to work around this, we require that `gasPrice == 0` in the Safe guard to ensure that there is no gas refund payment.
+
+The policy is **not** a `view` method and is allowed to make state changes, enabling stateful policies (for example, accounting or rate-limiting). Checks are **pre-execution only** — the `checkAfterExecution` / `checkAfterModuleExecution` hooks are intentionally no-ops — so any state a policy writes during the check is committed with the transaction regardless of what the transaction itself does afterwards. To keep that state consistent with the execution outcome, the Safe guard additionally requires `safeTxGas == 0`: a non-zero `safeTxGas` lets a Safe transaction whose inner call fails complete without reverting, which would leave a policy's staged state committed against a failed action. Forbidding it ensures a failed execution reverts the whole transaction (and the policy's writes) atomically.
 
 For any transaction executed by a Safe (be it a regular transaction or a module transaction), a policy MUST be configured, and the `checkTransaction` function MUST return the 4-byte magic value (equal to `IPolicy.checkTransaction.selector`).
+
+#### Security model for stateful checks
+
+Because `checkTransaction` may mutate state, the guard invokes policies with a `CALL` rather than a `STATICCALL`. To preserve the system's safety, the `SafePolicyGuard` keeps a reentrancy gate around each top-level check: while a check is in progress a policy cannot start a new top-level check — and since the Safe invokes the guard on every execution, it therefore cannot re-enter the Safe to run another guarded transaction mid-check. The engine's `checkTransaction` is also reachable only during a top-level check and only for the Safe being checked. This confines any recursive check (including `MultiSendPolicy`'s per-sub-transaction recursion, which targets the same Safe) to that Safe, so a malicious or buggy policy configured on one Safe **cannot** reach, mutate, or consume another Safe's policy state — this cross-Safe guarantee is enforced by the `safe == $checkingSafe` check and is covered by an end-to-end test. (Direct calls to the configuration functions are not blocked by this gate; they stay safe because their state is keyed by `msg.sender`.)
+
+Within a *single* Safe, however, a policy can trigger checks of that same Safe's other policies — this is exactly the mechanism `MultiSendPolicy` relies on. That surface is therefore bounded to the Safe's own configured (and, per the trust model, audited) policy set: a policy a Safe installs can drive that Safe's other policies, but nothing on any other Safe. Policies must key their state by `(msg.sender, safe)` per the `IPolicy.checkTransaction` security contract so they cannot be driven from an unexpected namespace.
+
+Policy authors MUST uphold the following to keep those guarantees:
+
+* Prefer no external calls. If reading external state, use a `STATICCALL` (e.g. a `view` helper such as OpenZeppelin's `SignatureChecker`) so the callee cannot reenter.
+* Never make a state-mutating external call to an untrusted address during a check.
+* Write only to storage namespaced by `(policyGuard, safe)`.
+* Follow checks-effects-interactions and bound gas and storage growth.
 
 ### Access Selectors
 
