@@ -6,7 +6,6 @@ import CreateCallArtifact from '@safe-global/safe-smart-account/build/artifacts/
 import MultiSendArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/MultiSend.sol/MultiSend.json'
 import MultiSendCallOnlyArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/MultiSendCallOnly.sol/MultiSendCallOnly.json'
 import SafeMigrationArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/SafeMigration.sol/SafeMigration.json'
-import SafeToL2MigrationArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/SafeToL2Migration.sol/SafeToL2Migration.json'
 import SafeToL2SetupArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/SafeToL2Setup.sol/SafeToL2Setup.json'
 import SignMessageLibArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/SignMessageLib.sol/SignMessageLib.json'
 import SafeProxyFactoryArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json'
@@ -34,7 +33,6 @@ export async function deploy() {
     safeL2.target,
     compatibilityFallbackHandler.target
   ])
-  const safeToL2Migration = await deployArtifact(SafeToL2MigrationArtifact)
   const safeToL2Setup = await deployArtifact(SafeToL2SetupArtifact)
   const signMessageLib = await deployArtifact(SignMessageLibArtifact)
   const safeProxyFactory = (await deployArtifact(SafeProxyFactoryArtifact)) as unknown as SafeProxyFactory
@@ -48,7 +46,6 @@ export async function deploy() {
     multiSend,
     multiSendCallOnly,
     safeMigration,
-    safeToL2Migration,
     safeToL2Setup,
     signMessageLib,
     safeProxyFactory

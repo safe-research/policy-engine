@@ -32,7 +32,7 @@
     "@nomicfoundation/ignition-core": "^0.15.11",
     "@openzeppelin/contracts": "^5.2.0",
     "@safe-global/safe-singleton-factory": "^1.0.41",
-    "@safe-global/safe-smart-account": "github:safe-global/safe-smart-account",
+    "@safe-global/safe-smart-account": "^1.5.0",
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
