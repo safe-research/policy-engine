@@ -24,9 +24,34 @@ abstract contract PolicyEngine is IPolicyEngine {
     mapping(address safe => mapping(AccessSelector.T => address policy)) private $policies;
 
     /**
+     * @notice The Safe currently being checked, or `address(0)` when no check is in progress.
+     * @dev Doubles as the reentrancy sentinel (non-zero => a top-level check is in progress) and
+     *      as the identity used to confine recursive checks to the checked Safe. A top-level check
+     *      is always entered with `msg.sender` (a deployed Safe), which is never `address(0)`.
+     *      TODO: move to transient storage (EIP-1153) once all target chains support it.
+     */
+    // solhint-disable-next-line private-vars-leading-underscore
+    address private $checkingSafe;
+
+    /**
      * @notice Error indicating an invalid selector was provided.
      */
     error InvalidSelector();
+
+    /**
+     * @notice Error indicating a reentrant top-level check was attempted.
+     */
+    error Reentrancy();
+
+    /**
+     * @notice Error indicating `checkTransaction` was called outside of a top-level guard check.
+     */
+    error NotChecking();
+
+    /**
+     * @notice Error indicating a check was requested for a Safe other than the one being checked.
+     */
+    error CrossSafeCheck();
 
     /**
      * @notice Error indicating access was denied.
@@ -118,7 +143,20 @@ abstract contract PolicyEngine is IPolicyEngine {
         bytes calldata data,
         Operation operation,
         bytes memory context
-    ) public view virtual returns (address) {
+    ) public virtual returns (address) {
+        // Intentionally `public`: this is invoked both internally by the guard entry points
+        // (`checkTransaction(msg.sender, ...)`) and externally by a policy recursing during a
+        // check (e.g. `MultiSendPolicy` validating each sub-transaction). The checks below do NOT
+        // block external calls — they constrain *when* and *for which Safe* it may run:
+        //  - `NotChecking`: only while a top-level check is in progress. `$checkingSafe` is set by
+        //    `_enterCheck` at the guard entry and cleared on exit, so a standalone call reverts.
+        //  - `CrossSafeCheck`: only for the Safe currently being checked, so a re-entrant or
+        //    cross-policy call cannot drive a check for a different Safe.
+        // `msg.sender` is deliberately not checked: the legitimate re-entrant (external) caller is
+        // a policy whose address is not known in advance.
+        require($checkingSafe != address(0), NotChecking());
+        require(safe == $checkingSafe, CrossSafeCheck());
+
         if (_allowedCalls(to, value, data, operation)) {
             return address(0);
         }
@@ -133,6 +171,28 @@ abstract contract PolicyEngine is IPolicyEngine {
             revert AccessDenied(policy);
         }
         return policy;
+    }
+
+    /**
+     * @notice Begins a top-level guard check for `safe`, guarding against reentrancy.
+     * @dev Reverts if a top-level check is already in progress. Since the Safe invokes the guard on
+     *      every execution, this also stops a policy from re-entering the Safe to run another
+     *      guarded transaction mid-check. It does not by itself restrict calls to the configuration
+     *      functions — those stay safe because their state is keyed by `msg.sender`. Kept as shared
+     *      functions rather than a modifier to avoid duplicating the guard bytecode at each entry.
+     */
+    function _enterCheck(address safe) internal {
+        require($checkingSafe == address(0), Reentrancy());
+        $checkingSafe = safe;
+    }
+
+    /**
+     * @notice Ends the top-level guard check.
+     * @dev Must run before the entry point returns; the reset is required because `$checkingSafe`
+     *      is persistent storage (removable once it moves to transient storage).
+     */
+    function _exitCheck() internal {
+        $checkingSafe = address(0);
     }
 
     /**

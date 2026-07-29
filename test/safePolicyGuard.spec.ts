@@ -839,6 +839,17 @@ describe('SafePolicyGuard', function () {
         )
       ).to.be.revertedWithCustomError(safePolicyGuard, 'NonZeroSafeTxGas')
     })
+
+    it('Should revert a direct engine checkTransaction outside a top-level check (NotChecking)', async function () {
+      const { safePolicyGuard, safe } = await loadFixture(fixture)
+
+      // The engine `checkTransaction` (6-arg) is only reachable while a top-level guard check is
+      // in progress. Calling it directly (no `_enterCheck`) must revert.
+      const engineCheck = safePolicyGuard.getFunction('checkTransaction(address,address,uint256,bytes,uint8,bytes)')
+      await expect(
+        engineCheck(await safe.getAddress(), randomAddress(), 0n, '0x', SafeOperation.Call, '0x')
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'NotChecking')
+    })
   })
 
   describe('checkModuleTransaction', function () {
