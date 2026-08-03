@@ -81,7 +81,7 @@ contract ERC20TransferPolicy is IPolicy {
      * @param safe The Safe address.
      * @param access The access selector.
      * @param data The recipient address.
-     * @dev This can only be called by the Safe Policy Guard.
+     * @dev Callable by anyone; state is namespaced by `msg.sender`, keeping the policy engine and policies logically separate.
      */
     function configure(address safe, AccessSelector.T access, bytes memory data) external returns (bool) {
         bytes4 selector = access.getSelector();

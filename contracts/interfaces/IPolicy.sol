@@ -17,7 +17,15 @@ interface IPolicy {
      * @param operation The type of operation of the transaction.
      * @param context The context of the transaction.
      * @param access The access selector for the transaction.
-     * @dev The function needs to implement policy validation logic (if any).
+     * @dev Implements the policy validation logic. This function MAY mutate state (stateful
+     *      policies are supported). To preserve the security properties the engine relies on,
+     *      policy authors MUST:
+     *      1. Prefer no external calls; if reading external state, use a `STATICCALL` (e.g. a
+     *         `view` helper) so the callee cannot reenter.
+     *      2. Never make a state-mutating external call to an untrusted address during the check.
+     *      3. Key state by `msg.sender` (the calling engine/guard) and treat `safe` as untrusted
+     *         input — i.e. namespace storage as `(msg.sender, safe)` — to avoid cross-guard interference.
+     *      4. Follow checks-effects-interactions and bound gas/storage growth.
      */
     function checkTransaction(
         address safe,
@@ -27,7 +35,7 @@ interface IPolicy {
         Operation operation,
         bytes calldata context,
         AccessSelector.T access
-    ) external view returns (bytes4 magicValue);
+    ) external returns (bytes4 magicValue);
 
     /**
      * @notice Configures the policy.

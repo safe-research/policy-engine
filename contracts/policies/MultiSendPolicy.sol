@@ -15,6 +15,9 @@ contract MultiSendPolicy is IPolicy {
 
     error InvalidMultiSend();
 
+    // Not `view`: this policy performs no writes itself, but it recurses into the (now non-`view`)
+    // engine `checkTransaction` for each sub-transaction, which a `view` function cannot call. The
+    // recursion passes the same `safe`, so it satisfies the engine's same-Safe confinement.
     function checkTransaction(
         address safe,
         address to,
@@ -23,7 +26,7 @@ contract MultiSendPolicy is IPolicy {
         Operation operation,
         bytes calldata context,
         AccessSelector.T
-    ) external view override returns (bytes4 magicValue) {
+    ) external override returns (bytes4 magicValue) {
         bytes calldata transactions = _decodeMultiSendTransactions(data);
         bytes calldata ctx;
         while (transactions.length > 0) {

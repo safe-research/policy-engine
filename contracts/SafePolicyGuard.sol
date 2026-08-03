@@ -149,7 +149,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         address payable,
         bytes calldata signatures,
         address
-    ) external view override {
+    ) external override {
         // TODO(nlordell): To simplify policies, we do not support gas prices for transaction
         // execution payment. This would add another mechanism for extracting funds from a Safe
         // transaction that is rarely used, and therefore should not be covered by the access
@@ -162,7 +162,9 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // always reverts atomically, keeping policy state in sync with execution outcome.
         require(safeTxGas == 0, NonZeroSafeTxGas());
 
+        _enterCheck(msg.sender);
         checkTransaction(msg.sender, to, value, data, operation, _decodeContext(signatures));
+        _exitCheck();
     }
 
     /* solhint-disable no-empty-blocks */
@@ -181,8 +183,10 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         bytes calldata data,
         Operation operation,
         address module
-    ) external view override returns (bytes32 moduleTxHash) {
+    ) external override returns (bytes32 moduleTxHash) {
+        _enterCheck(msg.sender);
         checkTransaction(msg.sender, to, value, data, operation, abi.encode(module));
+        _exitCheck();
         return bytes32(0);
     }
 
