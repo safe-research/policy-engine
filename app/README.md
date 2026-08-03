@@ -31,7 +31,7 @@ The Policy Engine Safe App enables Safe owners to:
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 20+ and npm
 - A Safe wallet accessible through the Safe Web App
 - Access to a supported network (Ethereum Sepolia, Gnosis Chain, Base Sepolia)
 
