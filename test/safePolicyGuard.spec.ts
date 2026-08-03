@@ -813,6 +813,32 @@ describe('SafePolicyGuard', function () {
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
         .withArgs(ZeroAddress)
     })
+
+    it('Should revert when safeTxGas is non-zero', async function () {
+      const { safePolicyGuard } = await loadFixture(fixture)
+
+      // A non-zero `safeTxGas` must be rejected before any policy lookup. Call the transaction
+      // guard entry point directly so the revert originates in the guard (not routed through a
+      // full Safe execution).
+      const checkTransaction = safePolicyGuard.getFunction(
+        'checkTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes,address)'
+      )
+      await expect(
+        checkTransaction(
+          randomAddress(),
+          0n,
+          '0x',
+          SafeOperation.Call,
+          1n,
+          0n,
+          0n,
+          ZeroAddress,
+          ZeroAddress,
+          '0x',
+          ZeroAddress
+        )
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'NonZeroSafeTxGas')
+    })
   })
 
   describe('checkModuleTransaction', function () {

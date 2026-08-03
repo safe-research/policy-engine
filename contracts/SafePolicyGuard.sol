@@ -60,6 +60,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     error NonZeroGasPrice();
 
     /**
+     * @notice Error indicating non zero safe transaction gas is not allowed.
+     */
+    error NonZeroSafeTxGas();
+
+    /**
      * @notice Error indicating the root is not configured.
      * @param root The root that is not configured.
      */
@@ -137,7 +142,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         uint256 value,
         bytes calldata data,
         Operation operation,
-        uint256,
+        uint256 safeTxGas,
         uint256,
         uint256 gasPrice,
         address,
@@ -150,6 +155,12 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // transaction that is rarely used, and therefore should not be covered by the access
         // control system.
         require(gasPrice == 0, NonZeroGasPrice());
+
+        // A non-zero `safeTxGas` lets a Safe transaction whose inner call fails complete without
+        // reverting. Once policy checks can mutate state, that would commit any state a policy
+        // staged during the pre-check against a failed action. Forbid it so a failed execution
+        // always reverts atomically, keeping policy state in sync with execution outcome.
+        require(safeTxGas == 0, NonZeroSafeTxGas());
 
         checkTransaction(msg.sender, to, value, data, operation, _decodeContext(signatures));
     }
