@@ -94,6 +94,16 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     error GuardAlreadyEnabled();
 
     /**
+     * @notice Error indicating the guarded transaction failed to execute.
+     */
+    error ExecutionFailed();
+
+    /**
+     * @notice Error indicating the guarded module transaction failed to execute.
+     */
+    error ModuleExecutionFailed();
+
+    /**
      * @notice Emitted when a policy root is configured.
      * @param safe The address of the Safe.
      * @param root The root is a hash of the policy configurations.
@@ -186,12 +196,16 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         _exitCheck();
     }
 
-    /* solhint-disable no-empty-blocks */
     /**
      * @inheritdoc ISafeTransactionGuard
+     * @dev The hook still runs on a successful transaction; what it cannot observe while
+     *      `safeTxGas == 0` and `gasPrice == 0` are enforced is a *failure*, because the Safe
+     *      reverts before calling it. Kept so atomicity is enforced locally rather than assumed of
+     *      the Safe version in use.
      */
-    function checkAfterExecution(bytes32 hash, bool success) external override {}
-    /* solhint-enable no-empty-blocks */
+    function checkAfterExecution(bytes32, bool success) external pure override {
+        require(success, ExecutionFailed());
+    }
 
     /**
      * @inheritdoc ISafeModuleGuard
@@ -211,12 +225,16 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         return bytes32(0);
     }
 
-    /* solhint-disable no-empty-blocks */
     /**
      * @inheritdoc ISafeModuleGuard
+     * @dev Checks are pre-execution only, so any state a policy wrote during the check commits with
+     *      the transaction. The module path has no `safeTxGas` equivalent —
+     *      `execTransactionFromModule` returns `false` instead of reverting — so without this a
+     *      policy's writes would commit against an action that never took effect.
      */
-    function checkAfterModuleExecution(bytes32 txHash, bool success) external override {}
-    /* solhint-enable no-empty-blocks */
+    function checkAfterModuleExecution(bytes32, bool success) external pure override {
+        require(success, ModuleExecutionFailed());
+    }
 
     /**
      * @dev Decodes additional context to pass to the policy from the signatures bytes.
