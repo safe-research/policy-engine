@@ -19,6 +19,7 @@ contract NativeTransferPolicy is IPolicy {
         uint256 value,
         bytes calldata,
         Operation,
+        address,
         bytes calldata,
         AccessSelector.T
     ) external pure override returns (bytes4 magicValue) {

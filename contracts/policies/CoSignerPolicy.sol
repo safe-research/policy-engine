@@ -28,6 +28,7 @@ contract CoSignerPolicy is IPolicy {
         uint256 value,
         bytes calldata data,
         Operation operation,
+        address,
         bytes calldata context,
         AccessSelector.T access
     ) external view override returns (bytes4 magicValue) {

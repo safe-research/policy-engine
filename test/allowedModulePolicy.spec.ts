@@ -75,22 +75,22 @@ describe('AllowedModulePolicy', function () {
         ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
       )
 
-      // Create context with module address
-      const context = ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
-
-      // Call checkTransaction and verify it returns the magic value
+      // Call checkTransaction and verify it returns the magic value. The module is passed as its
+      // own argument (the engine supplies it from the guard entry point); `context` is unused.
       const result = await allowedModulePolicy.checkTransaction(
         safeAddress,
         randomAddress(), // to address (doesn't matter for this policy)
         0, // value (doesn't matter for this policy)
         '0x', // data (doesn't matter for this policy)
         SafeOperation.Call,
-        context,
+        moduleAddress,
+        '0x', // context (unused by this policy)
         0 // AccessSelector.T (doesn't matter for this policy)
       )
 
-      // This should match IPolicy.checkTransaction.selector
-      expect(result).to.equal('0x2c5dcbd7')
+      // This should match IPolicy.checkTransaction.selector. Derived rather than hardcoded, since
+      // the magic value is the selector and therefore moves whenever the signature changes.
+      expect(result).to.equal(allowedModulePolicy.interface.getFunction('checkTransaction').selector)
     })
 
     it('Should revert on checkTransaction for non-allowed module', async function () {
@@ -99,12 +99,18 @@ describe('AllowedModulePolicy', function () {
       const safeAddress = await safe.getAddress()
       const randomModuleAddress = randomAddress()
 
-      // Create context with a random non-configured module address
-      const context = ethers.AbiCoder.defaultAbiCoder().encode(['address'], [randomModuleAddress])
-
-      // Call checkTransaction and expect it to revert
+      // Call checkTransaction with a random non-configured module and expect it to revert
       await expect(
-        allowedModulePolicy.checkTransaction(safeAddress, randomAddress(), 0, '0x', SafeOperation.Call, context, 0)
+        allowedModulePolicy.checkTransaction(
+          safeAddress,
+          randomAddress(),
+          0,
+          '0x',
+          SafeOperation.Call,
+          randomModuleAddress,
+          '0x',
+          0
+        )
       ).to.be.revertedWithCustomError(allowedModulePolicy, 'UnauthorizedModule')
     })
   })

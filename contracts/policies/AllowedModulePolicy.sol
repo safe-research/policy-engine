@@ -28,7 +28,9 @@ contract AllowedModulePolicy is IPolicy {
 
     /**
      * @inheritdoc IPolicy
-     * @dev This policy returns the magic value if it is an allowed module.
+     * @dev This policy returns the magic value if it is an allowed module. The zero check confines
+     *      it to the module path, since `module` is engine-supplied and `address(0)` for owner
+     *      transactions. Never read the module from `context`, which any executor can choose.
      */
     function checkTransaction(
         address safe,
@@ -36,11 +38,11 @@ contract AllowedModulePolicy is IPolicy {
         uint256,
         bytes calldata,
         Operation,
-        bytes calldata context,
+        address module,
+        bytes calldata,
         AccessSelector.T
     ) external view override returns (bytes4 magicValue) {
-        address module = abi.decode(context, (address));
-
+        require(module != address(0), InvalidModule());
         require($allowedModules[msg.sender][safe][module], UnauthorizedModule());
 
         return IPolicy.checkTransaction.selector;
@@ -53,6 +55,8 @@ contract AllowedModulePolicy is IPolicy {
      */
     function configure(address safe, AccessSelector.T, bytes memory data) external override returns (bool) {
         address module = abi.decode(data, (address));
+        // A zero entry would match every owner transaction, making this policy an allow-all.
+        require(module != address(0), InvalidModule());
 
         $allowedModules[msg.sender][safe][module] = true;
 

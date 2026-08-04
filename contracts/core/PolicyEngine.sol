@@ -34,6 +34,16 @@ abstract contract PolicyEngine is IPolicyEngine {
     address private $checkingSafe;
 
     /**
+     * @notice The module that authorized the check in progress, or `address(0)` for an owner
+     *         transaction (and whenever no check is in progress).
+     * @dev Held in state rather than passed as a `checkTransaction` argument so that a policy
+     *      driving a recursive check cannot forge the authorization path it is checked under.
+     *      TODO: move to transient storage (EIP-1153) once all target chains support it.
+     */
+    // solhint-disable-next-line private-vars-leading-underscore
+    address private $checkingModule;
+
+    /**
      * @notice Error indicating an invalid selector was provided.
      */
     error InvalidSelector();
@@ -163,9 +173,10 @@ abstract contract PolicyEngine is IPolicyEngine {
 
         (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
         require(policy != address(0), AccessDenied(address(0)));
-        try IPolicy(policy).checkTransaction(safe, to, value, data, operation, context, access) returns (
-            bytes4 magicValue
-        ) {
+        // The module comes from state, not from the caller — see `$checkingModule`.
+        try
+            IPolicy(policy).checkTransaction(safe, to, value, data, operation, $checkingModule, context, access)
+        returns (bytes4 magicValue) {
             require(magicValue == IPolicy.checkTransaction.selector, AccessDenied(policy));
         } catch {
             revert AccessDenied(policy);
@@ -175,24 +186,30 @@ abstract contract PolicyEngine is IPolicyEngine {
 
     /**
      * @notice Begins a top-level guard check for `safe`, guarding against reentrancy.
+     * @param safe The Safe being checked.
+     * @param module The module authorizing the transaction, or `address(0)` for an owner transaction.
      * @dev Reverts if a top-level check is already in progress. Since the Safe invokes the guard on
      *      every execution, this also stops a policy from re-entering the Safe to run another
      *      guarded transaction mid-check. It does not by itself restrict calls to the configuration
      *      functions — those stay safe because their state is keyed by `msg.sender`. Kept as shared
      *      functions rather than a modifier to avoid duplicating the guard bytecode at each entry.
      */
-    function _enterCheck(address safe) internal {
+    function _enterCheck(address safe, address module) internal {
         require($checkingSafe == address(0), Reentrancy());
         $checkingSafe = safe;
+        $checkingModule = module;
     }
 
     /**
      * @notice Ends the top-level guard check.
-     * @dev Must run before the entry point returns; the reset is required because `$checkingSafe`
-     *      is persistent storage (removable once it moves to transient storage).
+     * @dev Must run before the entry point returns; the reset is required because the fields are
+     *      persistent storage (removable once they move to transient storage). Clearing
+     *      `$checkingModule` keeps it `address(0)` outside a check, so an owner transaction can
+     *      never observe a stale module.
      */
     function _exitCheck() internal {
         $checkingSafe = address(0);
+        $checkingModule = address(0);
     }
 
     /**

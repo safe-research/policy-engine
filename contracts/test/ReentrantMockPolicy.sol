@@ -60,6 +60,7 @@ contract ReentrantMockPolicy is IPolicy {
         uint256 value,
         bytes calldata data,
         Operation operation,
+        address,
         bytes calldata,
         AccessSelector.T
     ) external override returns (bytes4 magicValue) {
