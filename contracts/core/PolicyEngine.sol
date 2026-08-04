@@ -28,7 +28,8 @@ abstract contract PolicyEngine is IPolicyEngine {
      * @dev Doubles as the reentrancy sentinel (non-zero => a top-level check is in progress) and
      *      as the identity used to confine recursive checks to the checked Safe. A top-level check
      *      is always entered with `msg.sender` (a deployed Safe), which is never `address(0)`.
-     *      TODO: move to transient storage (EIP-1153) once all target chains support it.
+     *      Persistent storage rather than EIP-1153 transient storage, which is not available on
+     *      every target chain. Migrating is a tracked follow-up and changes no guarantees.
      */
     // solhint-disable-next-line private-vars-leading-underscore
     address private $checkingSafe;
@@ -38,7 +39,8 @@ abstract contract PolicyEngine is IPolicyEngine {
      *         transaction (and whenever no check is in progress).
      * @dev Held in state rather than passed as a `checkTransaction` argument so that a policy
      *      driving a recursive check cannot forge the authorization path it is checked under.
-     *      TODO: move to transient storage (EIP-1153) once all target chains support it.
+     *      Persistent storage rather than EIP-1153 transient storage, which is not available on
+     *      every target chain. Migrating is a tracked follow-up and changes no guarantees.
      */
     // solhint-disable-next-line private-vars-leading-underscore
     address private $checkingModule;
@@ -94,7 +96,6 @@ abstract contract PolicyEngine is IPolicyEngine {
      * @param operation The operation type of the policy.
      * @param policy The address of the policy contract.
      * @param data Additional data for the policy configuration.
-     * @dev TODO: Revisit data type and size concerns.
      */
     event PolicyConfirmed(
         address indexed safe,
@@ -126,22 +127,14 @@ abstract contract PolicyEngine is IPolicyEngine {
             policy = policies[access];
         }
 
-        // TODO(nlordell): We can use additional fallback policies, if there aren't any matching the
-        // first access selector. For example, we can fall back to one or more of:
-        // - AccessSelector.create(to, bytes4(0), operation)
-        // - AccessSelector.create(address(0), selector, operation)
-        //
-        // **In my opinion**, we should only fallback to `(address(0), bytes4(0), operation)` (i.e.
-        // what we have here), as adding to many fallbacks would not be good for gas efficiency of
-        // the Safenet use case where most transactions will fallthrough to the "catch all" policy.
-
         return (access, policy);
     }
 
     /**
-     * @dev TODO: Consider the security considerations of calling `checkTransaction` as a Safe transaction,
-     *      this can matter because the Safe can potentially modify state and might lead to unexpected interactions.
-     *      This will be overridden in the inherited contracts to allow certain actions without any configured policy.
+     * @dev Overridden by inheriting contracts to permit specific calls with no configured policy.
+     *      An override widens what the guard allows, so each permitted call must be pinned exactly
+     *      — target, value, selector and operation — and must not be able to reconfigure policies
+     *      outside the delay.
      */
     // solhint-disable no-empty-blocks
     function _allowedCalls(

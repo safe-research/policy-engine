@@ -62,12 +62,6 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      */
     mapping(address => mapping(bytes32 => uint256)) public rootConfigured;
 
-    // TODO(nlordell): The access control mechanism currently only checks transaction pre-conditions
-    // and not post conditions. If we decide that post checks in policies are needed, we could use
-    // an execution stack to push policies to check post-executions for. This would have a large
-    // impact on gas - although we can use things like transient storage to offset it a little.
-    // Stack.T $afterExecutionChecks;
-
     /**
      * @notice Error indicating the root is already configured.
      * @param root The root that is already configured.
@@ -143,8 +137,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     }
 
     /**
-     * @dev TODO: Consider the security considerations of calling `checkTransaction` as a Safe transaction,
-     *      this can matter because the Safe can potentially modify state and might lead to unexpected interactions.
+     * @dev Permits the Safe to reach the configuration entry points with no policy configured, so a
+     *      Safe can never lock itself out of managing its own policies. Each call is pinned exactly
+     *      — this contract as target, zero value, `CALL`, and one of three selectors — and none of
+     *      them can apply a configuration outside the delay: `configureImmediately` is deliberately
+     *      absent, and is separately rejected once the guard is installed.
      */
     function _allowedCalls(
         address to,
@@ -185,10 +182,10 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         bytes calldata signatures,
         address
     ) external override {
-        // TODO(nlordell): To simplify policies, we do not support gas prices for transaction
-        // execution payment. This would add another mechanism for extracting funds from a Safe
-        // transaction that is rarely used, and therefore should not be covered by the access
-        // control system.
+        // Gas refunds are deliberately unsupported: they are another way to move funds out of a
+        // Safe, are rarely used, and are not worth covering in the policy interface. With
+        // `gasPrice == 0` the Safe skips `handlePayment` entirely, so `baseGas`, `gasToken` and
+        // `refundReceiver` cannot move value and need no policy check.
         require(gasPrice == 0, NonZeroGasPrice());
 
         // A non-zero `safeTxGas` lets a Safe transaction whose inner call fails complete without
