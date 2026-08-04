@@ -50,6 +50,10 @@ interface IPolicy {
      * @param access The access selector for the transaction.
      * @param data Additional data for the policy configuration.
      * @return success Indicates whether the configuration was successful.
+     * @dev Reachable by **any** address for itself: `configureImmediately` passes its caller as
+     *      `safe`, so `safe`, `access` and `data` are all caller-chosen and `safe` need not be a
+     *      Safe. Namespace state by `(msg.sender, safe)` as for {checkTransaction}, and validate
+     *      `access` and `data` rather than assuming a configuration flow produced them.
      */
     function configure(address safe, AccessSelector.T access, bytes memory data) external returns (bool success);
 }

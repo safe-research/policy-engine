@@ -193,8 +193,10 @@ abstract contract PolicyEngine is IPolicyEngine {
      * @dev Reverts if a top-level check is already in progress. Since the Safe invokes the guard on
      *      every execution, this also stops a policy from re-entering the Safe to run another
      *      guarded transaction mid-check. It does not by itself restrict calls to the configuration
-     *      functions — those stay safe because their state is keyed by `msg.sender`. Kept as shared
-     *      functions rather than a modifier to avoid duplicating the guard bytecode at each entry.
+     *      functions — those stay safe because their state is keyed by `msg.sender`. Nor does it
+     *      stop a policy driving checks of the same Safe's other policies; see {checkTransaction}.
+     *      Kept as shared functions rather than a modifier to avoid duplicating the guard bytecode
+     *      at each entry.
      */
     function _enterCheck(address safe, address module) internal {
         require($checkingSafe == address(0), Reentrancy());
