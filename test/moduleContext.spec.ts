@@ -1,10 +1,11 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
-import { ZeroAddress, solidityPacked } from 'ethers'
+import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
 import {
   SafeOperation,
+  appendSignatureExtension,
   buildSafeTransaction,
   createConfiguration,
   createSafe,
@@ -121,9 +122,11 @@ describe('Authenticated module parameter', function () {
       // freely choosable by whoever submits the transaction.
       const { data: signature } = await safeSignTypedData(owner, await safe.getAddress(), safeTx)
 
-      // `other` is not an owner and signed nothing; it appends a forged "module" context.
+      // `other` is not an owner and signed nothing; it appends a well-formed context envelope
+      // carrying a forged "module". The envelope is valid, so the guard does decode and pass it to
+      // the policy -- the denial must come from the policy reading `module`, not from the decode.
       const forgedContext = ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
-      const signatures = solidityPacked(['bytes', 'bytes', 'uint256'], [signature, forgedContext, 32])
+      const signatures = appendSignatureExtension(signature, forgedContext)
 
       await expect(
         safe

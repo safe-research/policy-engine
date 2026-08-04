@@ -90,6 +90,28 @@ export const EIP712_SAFE_TX_TYPE = {
 }
 
 /**
+ * The `SignatureExtension` type hash carrying policy context, mirroring
+ * `SafePolicyGuard._CONTEXT_TYPE_HASH`.
+ */
+export const POLICY_CONTEXT_TYPE_HASH = ethers.id('SafePolicyGuard.PolicyContext.v1')
+
+/**
+ * Appends a `SignatureExtension` envelope carrying `payload` to a Safe `signatures` blob.
+ * @param signatures The owner signatures.
+ * @param payload The policy context to carry in the tail.
+ * @returns The signatures with `[payload][uint256 payloadLength][bytes32 typeHash]` appended.
+ * @dev Safe ignores trailing bytes when parsing owner signatures, so the envelope rides along
+ *      without disturbing verification. The type hash is the terminal word so that the guard can
+ *      recognise the envelope without mistaking unrelated signature data for it.
+ */
+export function appendSignatureExtension(signatures: BytesLike, payload: BytesLike): string {
+  return solidityPacked(
+    ['bytes', 'bytes', 'uint256', 'bytes32'],
+    [signatures, payload, ethers.dataLength(payload), POLICY_CONTEXT_TYPE_HASH]
+  )
+}
+
+/**
  * Function to calculate the address of a proxy contract.
  * @param factory The SafeProxyFactory contract.
  * @param singletonAddress The address of the singleton contract.
@@ -206,7 +228,7 @@ export async function createSafe({
  * @param owner The owner of the Safe.
  * @returns The pre-approved signature.
  */
-async function preApprovedSignature(owner: AddressLike): Promise<string> {
+export async function preApprovedSignature(owner: AddressLike): Promise<string> {
   const ownerAddress = await ethers.resolveAddress(owner)
   return ethers.solidityPacked(['uint256', 'uint256', 'uint8'], [ownerAddress, 0, 1])
 }
@@ -324,11 +346,8 @@ export async function execTransaction({
     throw new Error('signing method not supported')
   }
 
-  if (additionalData.length > 2) {
-    signatureBytes = solidityPacked(
-      ['bytes', 'bytes', 'uint256'],
-      [signatureBytes, additionalData, (additionalData.length - 2) / 2]
-    ) as BytesLike
+  if (ethers.dataLength(additionalData) > 0) {
+    signatureBytes = appendSignatureExtension(signatureBytes, additionalData) as BytesLike
   }
 
   return await safe
