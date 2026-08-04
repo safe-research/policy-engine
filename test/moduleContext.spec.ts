@@ -133,8 +133,11 @@ describe('Authenticated module parameter', function () {
           .connect(other)
           .execTransaction(to, 0n, '0x', SafeOperation.Call, 0n, 0n, 0n, ZeroAddress, ZeroAddress, signatures)
       )
-        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
-        .withArgs(await allowedModulePolicy.getAddress())
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await allowedModulePolicy.getAddress(),
+          allowedModulePolicy.interface.encodeErrorResult('InvalidModule', [])
+        )
     })
 
     it('Should deny an owner transaction with no context', async function () {
@@ -148,10 +151,13 @@ describe('Authenticated module parameter', function () {
       )
 
       // `module` is `address(0)` for an owner transaction, so the policy rejects it. The revert
-      // reason is the policy's own `InvalidModule`, surfaced by the engine as `AccessDenied`.
+      // reason is the policy's own `InvalidModule`, forwarded by the engine in `PolicyReverted`.
       await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
-        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
-        .withArgs(await allowedModulePolicy.getAddress())
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await allowedModulePolicy.getAddress(),
+          allowedModulePolicy.interface.encodeErrorResult('InvalidModule', [])
+        )
     })
   })
 
@@ -188,8 +194,11 @@ describe('Authenticated module parameter', function () {
       await testModule.executeTx(await safe.getAddress(), randomAddress(), 0, '0x', SafeOperation.Call)
 
       await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
-        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
-        .withArgs(await allowedModulePolicy.getAddress())
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await allowedModulePolicy.getAddress(),
+          allowedModulePolicy.interface.encodeErrorResult('InvalidModule', [])
+        )
     })
 
     it('Should propagate the module to MultiSend sub-transaction checks', async function () {

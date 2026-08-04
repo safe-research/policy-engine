@@ -217,4 +217,58 @@ describe('PolicyEngine Edge Cases', function () {
       expect(await accessSelector.getOperation(delegateCallFallback)).to.equal(SafeOperation.DelegateCall)
     })
   })
+
+  describe('Denial reasons', function () {
+    async function guardedFixture() {
+      const base = await loadFixture(fixture)
+      const { owner, safe, safePolicyGuard, mockPolicy } = base
+      const target = randomAddress()
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
+        ])
+      })
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      })
+
+      return { ...base, target }
+    }
+
+    it('Should forward a policy own revert data', async function () {
+      const { owner, safe, safePolicyGuard, mockPolicy, target } = await guardedFixture()
+      await mockPolicy.setRevertCheckWithReason(true)
+
+      await expect(execTransaction({ owners: [owner], safe, to: target }))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(await mockPolicy.getAddress(), mockPolicy.interface.encodeErrorResult('MockDenied', [42]))
+    })
+
+    it('Should report a wrong magic value as AccessDenied, not PolicyReverted', async function () {
+      const { owner, safe, safePolicyGuard, mockPolicy, target } = await guardedFixture()
+
+      // The policy returns successfully but with the wrong magic value, which is a denial rather
+      // than a revert and so keeps the `AccessDenied` shape.
+      await mockPolicy.setRevertTransaction(true)
+
+      await expect(execTransaction({ owners: [owner], safe, to: target }))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+        .withArgs(await mockPolicy.getAddress())
+    })
+
+    it('Should report no configured policy as AccessDenied with the zero address', async function () {
+      const { owner, safe, safePolicyGuard } = await guardedFixture()
+
+      await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+        .withArgs(ZeroAddress)
+    })
+  })
 })

@@ -124,7 +124,12 @@ describe('NativeTransferPolicy', function () {
           safe,
           to: await recipient.getAddress()
         })
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await nativeTransferPolicy.getAddress(),
+          nativeTransferPolicy.interface.encodeErrorResult('InvalidTransfer', [])
+        )
     })
 
     it('Should not allow non-native transfer transactions', async function () {

@@ -208,9 +208,12 @@ describe('AllowedModulePolicy', function () {
       })
 
       // The module is not in the allowed list, so it should be blocked
-      await expect(
-        unauthorizedModule.executeTx(await safe.getAddress(), target, 0, '0x', SafeOperation.Call)
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+      await expect(unauthorizedModule.executeTx(await safe.getAddress(), target, 0, '0x', SafeOperation.Call))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await allowedModulePolicy.getAddress(),
+          allowedModulePolicy.interface.encodeErrorResult('UnauthorizedModule', [])
+        )
     })
   })
 })

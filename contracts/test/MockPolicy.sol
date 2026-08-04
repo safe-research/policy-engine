@@ -13,6 +13,14 @@ contract MockPolicy is IPolicy {
 
     bool public revertConfigure;
 
+    bool public revertCheckWithReason;
+
+    /**
+     * @notice Error carrying a payload, so tests can assert the engine forwards a policy's own
+     *         revert data rather than replacing it.
+     */
+    error MockDenied(uint256 code);
+
     /**
      * @notice This function is used to set the revertTransaction flag.
      * @param revert_ The value to set the revertTransaction flag to.
@@ -32,6 +40,14 @@ contract MockPolicy is IPolicy {
     }
 
     /**
+     * @notice Makes `checkTransaction` actually revert, as opposed to `revertTransaction` which only
+     *         returns a zero magic value.
+     */
+    function setRevertCheckWithReason(bool revert_) external {
+        revertCheckWithReason = revert_;
+    }
+
+    /**
      * @inheritdoc IPolicy
      * @dev This policy always returns the magic value for a particular access selector.
      */
@@ -45,6 +61,7 @@ contract MockPolicy is IPolicy {
         bytes calldata,
         AccessSelector.T
     ) external view override returns (bytes4 magicValue) {
+        require(!revertCheckWithReason, MockDenied(42));
         return revertTransaction ? magicValue : IPolicy.checkTransaction.selector;
     }
 

@@ -23,7 +23,8 @@ import {
   deployMultiSendPolicy,
   deployTestERC20Token,
   deployCoSignerPolicy,
-  deployAllowPolicy
+  deployAllowPolicy,
+  deployMockPolicy
 } from './deploy'
 
 describe('MultiSendPolicy', function () {
@@ -323,8 +324,74 @@ describe('MultiSendPolicy', function () {
           operation: SafeOperation.DelegateCall
         })
       )
-        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
-        .withArgs(await multiSendPolicy.getAddress())
+        // Attributed to MultiSendPolicy -- engine-supplied, so trustworthy -- with the
+        // sub-transaction's own denial nested inside as opaque data.
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await multiSendPolicy.getAddress(),
+          safePolicyGuard.interface.encodeErrorResult('AccessDenied', [ZeroAddress])
+        )
+    })
+
+    it('Should nest a sub-transaction policy revert reason inside the batch attribution', async function () {
+      const { owner, safePolicyGuard, safe, multiSendPolicy, multiSend, allowPolicy, recipient } =
+        await loadFixture(fixture)
+
+      const { mockPolicy } = await deployMockPolicy()
+      const subTarget = randomAddress()
+      const amount = ethers.parseEther('1')
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [
+            createConfiguration({ target: recipient.address, policy: await allowPolicy.getAddress() }),
+            createConfiguration({ target: subTarget, policy: await mockPolicy.getAddress() }),
+            createConfiguration({
+              target: await multiSend.getAddress(),
+              selector: multiSend.interface.getFunction('multiSend')?.selector,
+              operation: SafeOperation.DelegateCall,
+              policy: await multiSendPolicy.getAddress()
+            })
+          ]
+        ])
+      })
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      })
+
+      await mockPolicy.setRevertCheckWithReason(true)
+
+      const txs = [
+        buildSafeTransaction({ to: recipient.address, value: amount, data: '0x', nonce: 0 }),
+        buildSafeTransaction({ to: subTarget as string, value: 0, data: '0x', nonce: 1 })
+      ]
+      const safeTx = await buildMultiSendSafeTx(multiSend, txs, await safe.nonce())
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await multiSend.getAddress(),
+          data: safeTx.data,
+          operation: SafeOperation.DelegateCall
+        })
+      )
+        // Each layer's `policy` is engine-supplied, so the attribution cannot be forged by a
+        // policy; the inner policy's own error is carried verbatim as the nested payload.
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await multiSendPolicy.getAddress(),
+          safePolicyGuard.interface.encodeErrorResult('PolicyReverted', [
+            await mockPolicy.getAddress(),
+            mockPolicy.interface.encodeErrorResult('MockDenied', [42])
+          ])
+        )
     })
 
     it('Should pass with multiple guard transactions to configure without any configured policy', async function () {

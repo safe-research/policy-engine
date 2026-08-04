@@ -158,7 +158,9 @@ describe('CoSignerPolicy', function () {
           value: amount,
           data: '0x'
         })
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(await coSignerPolicy.getAddress(), coSignerPolicy.interface.encodeErrorResult('Unauthorized', []))
     })
 
     it('Should not allow transaction with wrong co-signer signature', async function () {
@@ -218,7 +220,9 @@ describe('CoSignerPolicy', function () {
           value: amount,
           additionalData: cosignerSignature.data
         })
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(await coSignerPolicy.getAddress(), coSignerPolicy.interface.encodeErrorResult('Unauthorized', []))
     })
 
     it('Should allow transaction with different co-signers for different targets', async function () {
