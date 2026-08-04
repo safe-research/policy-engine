@@ -11,7 +11,7 @@ import {
   randomSelector,
   createConfiguration
 } from '../src/utils'
-import { deploySafeContracts, deploySafePolicyGuard, deployMockPolicy } from './deploy'
+import { deployAllowPolicy, deploySafeContracts, deploySafePolicyGuard, deployMockPolicy } from './deploy'
 
 describe('PolicyEngine Edge Cases', function () {
   async function fixture() {
@@ -215,6 +215,67 @@ describe('PolicyEngine Edge Cases', function () {
       expect(await accessSelector.getTarget(delegateCallFallback)).to.equal(ZeroAddress)
       expect(await accessSelector.getSelector(delegateCallFallback)).to.equal('0x00000000')
       expect(await accessSelector.getOperation(delegateCallFallback)).to.equal(SafeOperation.DelegateCall)
+    })
+  })
+
+  describe('Policy selection', function () {
+    it('Should prefer an exact match over the fallback', async function () {
+      const { owner, safe, safePolicyGuard, mockPolicy } = await loadFixture(fixture)
+      const { allowPolicy } = await deployAllowPolicy()
+      const target = randomAddress()
+
+      // The fallback denies (MockPolicy returns a zero magic value) and the exact match allows, so
+      // a success can only mean the exact match was selected.
+      await mockPolicy.setRevertTransaction(true)
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [
+            createConfiguration({ policy: await mockPolicy.getAddress() }),
+            createConfiguration({ target, policy: await allowPolicy.getAddress() })
+          ]
+        ])
+      })
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      })
+
+      await expect(execTransaction({ owners: [owner], safe, to: target })).to.not.be.reverted
+
+      // Any other target falls through to the denying fallback.
+      await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+        .withArgs(await mockPolicy.getAddress())
+    })
+
+    it('Should not let a DELEGATECALL fallback authorize a CALL', async function () {
+      const { owner, safe, safePolicyGuard } = await loadFixture(fixture)
+      const { allowPolicy } = await deployAllowPolicy()
+
+      // The operation is part of the access selector, so the two fallbacks are separate keys.
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [createConfiguration({ operation: SafeOperation.DelegateCall, policy: await allowPolicy.getAddress() })]
+        ])
+      })
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+      })
+
+      await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+        .withArgs(ZeroAddress)
     })
   })
 
