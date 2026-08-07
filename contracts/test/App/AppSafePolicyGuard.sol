@@ -125,6 +125,7 @@ contract AppSafePolicyGuard is SafePolicyGuard {
         delete rootConfigured[msg.sender][configureRoot];
         _configureRoots[msg.sender].remove(configureRoot);
         delete _configurations[configureRoot];
+        emit RootApplied(msg.sender, configureRoot);
         for (uint256 i = 0; i < configurations.length; i++) {
             _confirmPolicy(
                 msg.sender,
