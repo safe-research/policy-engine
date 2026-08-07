@@ -120,6 +120,13 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     event RootInvalidated(address indexed safe, bytes32 indexed root);
 
     /**
+     * @notice Emitted when a policy root is applied.
+     * @param safe The address of the Safe.
+     * @param root The root is a hash of the policy configurations.
+     */
+    event RootApplied(address indexed safe, bytes32 indexed root);
+
+    /**
      * @param delay The delay for the configuration change.
      */
     constructor(uint256 delay) {
@@ -341,13 +348,15 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     /**
      * @notice Applies a policy configuration change.
      * @param configurations The array of configurations to be applied.
-     * @dev This can be used to set multiple policies at once.
+     * @dev This can be used to set multiple policies at once. {RootApplied} is emitted before the
+     *      individual {PolicyConfirmed} logs, so indexer can attribute them to the root.
      */
     function applyConfiguration(Configuration[] calldata configurations) external virtual {
         bytes32 configureRoot = keccak256(abi.encode(configurations));
         require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
         require(block.timestamp >= rootConfigured[msg.sender][configureRoot], RootConfigurationPending());
         delete rootConfigured[msg.sender][configureRoot];
+        emit RootApplied(msg.sender, configureRoot);
         for (uint256 i = 0; i < configurations.length; i++) {
             _confirmPolicy(
                 msg.sender,

@@ -779,6 +779,68 @@ describe('SafePolicyGuard', function () {
           configuration[0].data
         )
     })
+
+    it('Should emit an event with the root when the configuration is applied', async function () {
+      const { owner, safePolicyGuard, safe, delay, mockPolicy } = await loadFixture(fixture)
+
+      // Configuration parameters
+      const configuration = [
+        createConfiguration({
+          target: randomAddress(),
+          selector: randomSelector(),
+          policy: await mockPolicy.getAddress()
+        })
+      ]
+
+      // Configuration root
+      const configurationRoot = getConfigurationRoot(configuration)
+
+      // Call the request configuration function on safe using execTransaction helper function
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [configurationRoot])
+      })
+
+      // Increase the time to the delay
+      await time.increase(delay)
+
+      // Call the apply configuration function on safe using execTransaction helper function
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await safePolicyGuard.getAddress(),
+          data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configuration])
+        })
+      )
+        .to.emit(safePolicyGuard, 'RootApplied')
+        .withArgs(await safe.getAddress(), configurationRoot)
+    })
+
+    it('Should not emit a root applied event when the configuration is applied without a root', async function () {
+      const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
+
+      // Configuration parameters
+      const configuration = [
+        createConfiguration({
+          target: randomAddress(),
+          selector: randomSelector(),
+          policy: await mockPolicy.getAddress()
+        })
+      ]
+
+      // `configureImmediately` bypasses the delay and has no root to report
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await safePolicyGuard.getAddress(),
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
+        })
+      ).to.not.emit(safePolicyGuard, 'RootApplied')
+    })
   })
 
   describe('invalidateRoot', function () {
