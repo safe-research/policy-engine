@@ -349,7 +349,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @notice Applies a policy configuration change.
      * @param configurations The array of configurations to be applied.
      * @dev This can be used to set multiple policies at once. {RootApplied} is emitted before the
-     *      individual {PolicyConfirmed} logs, so indexer can attribute them to the root.
+     *      individual {PolicyConfirmed} logs, so an indexer can attribute them to the root.
      */
     function applyConfiguration(Configuration[] calldata configurations) external virtual {
         bytes32 configureRoot = keccak256(abi.encode(configurations));
