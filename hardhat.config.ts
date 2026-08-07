@@ -40,18 +40,14 @@ const config: HardhatUserConfig = {
       {
         version: '0.8.28',
         settings: {
+          // Pinned explicitly: this is Hardhat's current default, but relying on the default would
+          // let a Hardhat upgrade silently change the deployed bytecode.
+          evmVersion: 'paris',
           optimizer: {
             enabled: true,
             runs: 10_000_000
           },
           viaIR: true
-        }
-      },
-      {
-        version: '0.7.6',
-        settings: {
-          optimizer: { enabled: false },
-          viaIR: false
         }
       }
     ],
@@ -61,6 +57,7 @@ const config: HardhatUserConfig = {
       'contracts/test/TestImports.sol': {
         version: '0.8.28',
         settings: {
+          evmVersion: 'paris',
           optimizer: {
             enabled: false
           },
@@ -70,6 +67,7 @@ const config: HardhatUserConfig = {
       '@safe-global/safe-smart-account/contracts/Safe.sol': {
         version: '0.8.28',
         settings: {
+          evmVersion: 'paris',
           optimizer: {
             enabled: false
           },
