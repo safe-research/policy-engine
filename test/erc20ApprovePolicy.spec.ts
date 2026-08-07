@@ -137,7 +137,12 @@ describe('ERC20ApprovePolicy', function () {
           to: await token.getAddress(),
           data: token.interface.encodeFunctionData('approve', [spender, amount])
         })
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await erc20ApprovePolicy.getAddress(),
+          erc20ApprovePolicy.interface.encodeErrorResult('Unauthorized', [])
+        )
     })
 
     it('Should not allow non-approve transactions', async function () {

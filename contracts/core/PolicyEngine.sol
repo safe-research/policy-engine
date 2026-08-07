@@ -73,6 +73,15 @@ abstract contract PolicyEngine is IPolicyEngine {
     error AccessDenied(address policy);
 
     /**
+     * @notice Error indicating a policy reverted while checking a transaction.
+     * @param policy The address of the policy that reverted.
+     * @param reason The policy's own revert data, forwarded for diagnostics.
+     * @dev Distinct from {AccessDenied}, which covers no policy being configured and a policy
+     *      returning the wrong magic value.
+     */
+    error PolicyReverted(address policy, bytes reason);
+
+    /**
      * @notice Error indicating the policy configuration failed.
      */
     error PolicyConfigurationFailed();
@@ -178,8 +187,8 @@ abstract contract PolicyEngine is IPolicyEngine {
             IPolicy(policy).checkTransaction(safe, to, value, data, operation, $checkingModule, context, access)
         returns (bytes4 magicValue) {
             require(magicValue == IPolicy.checkTransaction.selector, AccessDenied(policy));
-        } catch {
-            revert AccessDenied(policy);
+        } catch (bytes memory reason) {
+            revert PolicyReverted(policy, reason);
         }
         return policy;
     }

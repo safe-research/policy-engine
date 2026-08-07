@@ -141,7 +141,12 @@ describe('ERC20TransferPolicy', function () {
           to: await token.getAddress(),
           data: token.interface.encodeFunctionData('transfer', [await other.getAddress(), amount])
         })
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await erc20TransferPolicy.getAddress(),
+          erc20TransferPolicy.interface.encodeErrorResult('Unauthorized', [])
+        )
     })
 
     it('Should not allow non-transfer transactions', async function () {
