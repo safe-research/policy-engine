@@ -819,7 +819,7 @@ describe('SafePolicyGuard', function () {
         .withArgs(await safe.getAddress(), configurationRoot)
     })
 
-    it('Should not emit a root applied event when the configuration is applied without a root', async function () {
+    it('Should not emit RootApplied when configuring immediately', async function () {
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
 
       // Configuration parameters
