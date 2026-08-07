@@ -1,17 +1,27 @@
-import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
+import { loadFixture, time } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
 import { ZeroAddress, id } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, randomAddress } from '../src/utils'
-import { deploySafeContracts, deploySafePolicyGuard } from './deploy'
+import {
+  SafeOperation,
+  createConfiguration,
+  createSafe,
+  execTransaction,
+  getConfigurationRoot,
+  getSafeTransactionHash,
+  preApprovedSignature,
+  randomAddress
+} from '../src/utils'
+import { deployAllowPolicy, deploySafeContracts, deploySafePolicyGuard } from './deploy'
 
 // Mirrors ReentrantMockPolicy.Mode.
 enum Mode {
   None,
   ReenterGuardEntry,
   ReenterEngine,
-  WriteState
+  WriteState,
+  ReenterModuleGuardEntry
 }
 
 describe('Non-view check path — reentrancy & Safe confinement', function () {
@@ -148,5 +158,93 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     expect(await policy.writes()).to.equal(0n)
     await execTransaction({ owners: [ownerA], safe: safeA, to: randomAddress() })
     expect(await policy.writes()).to.equal(1n)
+  })
+
+  it('Should block a policy re-entering the module-guard entry (Reentrancy)', async function () {
+    const { ownerA, safePolicyGuard, safeA } = await loadFixture(fixture)
+
+    // The counterpart of the transaction-guard case above: both entry points call `_enterCheck`.
+    const policy = await deployReentrantPolicy()
+    await policy.setMode(Mode.ReenterModuleGuardEntry)
+    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
+      createConfiguration({ policy: await policy.getAddress() })
+    ])
+
+    await execTransaction({ owners: [ownerA], safe: safeA, to: randomAddress() })
+
+    expect((await policy.lastReentryError()).slice(0, 10)).to.equal(id('Reentrancy()').slice(0, 10))
+  })
+
+  it('Should reject re-entering applyConfiguration from a policy configure hook', async function () {
+    const { ownerA, safePolicyGuard, safeA } = await loadFixture(fixture)
+
+    const policy = await (await ethers.getContractFactory('ReentrantConfigurePolicy')).deploy()
+    const configurations = [createConfiguration({ target: randomAddress(), policy: await policy.getAddress() })]
+    const applyCalldata = safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configurations])
+    await policy.setReentrantCalldata(applyCalldata)
+
+    await execTransaction({
+      owners: [ownerA],
+      safe: safeA,
+      to: await safePolicyGuard.getAddress(),
+      data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [getConfigurationRoot(configurations)])
+    })
+    await time.increase(await safePolicyGuard.DELAY())
+
+    // `applyConfiguration` deletes the pending root before calling any policy, so the policy's
+    // re-entry finds nothing to apply and cannot replay the configuration.
+    await execTransaction({
+      owners: [ownerA],
+      safe: safeA,
+      to: await safePolicyGuard.getAddress(),
+      data: applyCalldata
+    })
+
+    expect(await policy.reenterSucceeded()).to.equal(false)
+    expect((await policy.lastReentryError()).slice(0, 10)).to.equal(id('RootNotConfigured(bytes32)').slice(0, 10))
+  })
+
+  it('Should allow a guarded Safe to execute a transaction on another guarded Safe', async function () {
+    // The gate must not over-block: `_exitCheck` runs before execution begins, so a nested guarded
+    // execution is a fresh top-level check rather than a reentrant one.
+    const { ownerA, ownerB, safePolicyGuard, safeA, safeB } = await loadFixture(fixture)
+    const { allowPolicy } = await deployAllowPolicy()
+
+    const innerTarget = randomAddress()
+    await configureAndEnableGuard(ownerB, safeB, safePolicyGuard, [
+      createConfiguration({ target: innerTarget, policy: await allowPolicy.getAddress() })
+    ])
+    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
+      createConfiguration({
+        target: await safeB.getAddress(),
+        selector: safeB.interface.getFunction('execTransaction')?.selector,
+        policy: await allowPolicy.getAddress()
+      })
+    ])
+
+    // Safe B's owner pre-approves the inner hash so that Safe A can be the executor.
+    const innerHash = await getSafeTransactionHash({ safe: safeB, to: innerTarget })
+    await safeB.connect(ownerB).approveHash(innerHash)
+    const preApproved = await preApprovedSignature(ownerB)
+
+    await expect(
+      execTransaction({
+        owners: [ownerA],
+        safe: safeA,
+        to: await safeB.getAddress(),
+        data: safeB.interface.encodeFunctionData('execTransaction', [
+          innerTarget,
+          0n,
+          '0x',
+          SafeOperation.Call,
+          0n,
+          0n,
+          0n,
+          ZeroAddress,
+          ZeroAddress,
+          preApproved
+        ])
+      })
+    ).to.not.be.reverted
   })
 })

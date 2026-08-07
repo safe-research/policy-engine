@@ -4,10 +4,13 @@ import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
 import {
+  buildMultiSendSafeTx,
+  buildSafeTransaction,
   createConfiguration,
   createSafe,
   execTransaction,
   getConfigurationRoot,
+  getGuard,
   POLICY_CONTEXT_TYPE_HASH,
   preApprovedSignature,
   randomAddress,
@@ -52,6 +55,22 @@ describe('SafePolicyGuard', function () {
     const accessSelector = await AccessSelectorFactory.deploy()
 
     return { owner, other, safePolicyGuard, safe, delay, mockPolicy, accessSelector }
+  }
+
+  /** Installs `configurations` before the guard, then enables the transaction guard. */
+  async function enableGuardWithPolicy(owner: any, safe: any, safePolicyGuard: any, configurations: unknown[]) {
+    await execTransaction({
+      owners: [owner],
+      safe,
+      to: await safePolicyGuard.getAddress(),
+      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
+    })
+    await execTransaction({
+      owners: [owner],
+      safe,
+      to: await safe.getAddress(),
+      data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+    })
   }
 
   describe('constructor', function () {
@@ -955,6 +974,33 @@ describe('SafePolicyGuard', function () {
       ).to.be.revertedWithCustomError(safePolicyGuard, 'NonZeroSafeTxGas')
     })
 
+    it('Should revert when safeTxGas is non-zero through a Safe execution', async function () {
+      // The unit test above asserts the ordering (rejected before policy lookup, since no policy is
+      // configured there); this one asserts the Safe actually forwards `safeTxGas` to the guard.
+      const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
+      const target = randomAddress()
+      await enableGuardWithPolicy(owner, safe, safePolicyGuard, [
+        createConfiguration({ target, policy: await mockPolicy.getAddress() })
+      ])
+
+      await expect(
+        execTransaction({ owners: [owner], safe, to: target, safeTxGas: 100_000n })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'NonZeroSafeTxGas')
+    })
+
+    it('Should revert when gasPrice is non-zero', async function () {
+      const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
+      const target = randomAddress()
+      await enableGuardWithPolicy(owner, safe, safePolicyGuard, [
+        createConfiguration({ target, policy: await mockPolicy.getAddress() })
+      ])
+
+      await expect(execTransaction({ owners: [owner], safe, to: target, gasPrice: 1n })).to.be.revertedWithCustomError(
+        safePolicyGuard,
+        'NonZeroGasPrice'
+      )
+    })
+
     it('Should revert a direct engine checkTransaction outside a top-level check (NotChecking)', async function () {
       const { safePolicyGuard, safe } = await loadFixture(fixture)
 
@@ -995,6 +1041,70 @@ describe('SafePolicyGuard', function () {
       await expect(testModule.executeTx(await safe.getAddress(), randomAddress(), 0, '0x', SafeOperation.Call))
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
         .withArgs(ZeroAddress)
+    })
+  })
+
+  describe('Guard removal', function () {
+    it('Should remove the guard after the delay via a single batch', async function () {
+      // The documented flow: request an AllowPolicy for `setGuard`, wait out the delay, then apply
+      // it and remove the guard in one MultiSend.
+      const { owner, safePolicyGuard, safe, delay } = await loadFixture(fixture)
+      const { allowPolicy } = await deployAllowPolicy()
+      const { multiSend } = await deploySafeContracts()
+
+      await enableGuardWithPolicy(owner, safe, safePolicyGuard, [
+        createConfiguration({
+          target: await multiSend.getAddress(),
+          selector: multiSend.interface.getFunction('multiSend')?.selector,
+          operation: SafeOperation.DelegateCall,
+          policy: await allowPolicy.getAddress()
+        })
+      ])
+
+      const configurations = [
+        createConfiguration({
+          target: await safe.getAddress(),
+          selector: safe.interface.getFunction('setGuard')?.selector,
+          policy: await allowPolicy.getAddress()
+        })
+      ]
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
+          getConfigurationRoot(configurations)
+        ])
+      })
+      await time.increase(delay)
+
+      const batch = await buildMultiSendSafeTx(
+        multiSend,
+        [
+          buildSafeTransaction({
+            to: await safePolicyGuard.getAddress(),
+            data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configurations]),
+            nonce: 0
+          }),
+          buildSafeTransaction({
+            to: await safe.getAddress(),
+            data: safe.interface.encodeFunctionData('setGuard', [ZeroAddress]),
+            nonce: 1
+          })
+        ],
+        await safe.nonce()
+      )
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await multiSend.getAddress(),
+        data: batch.data,
+        operation: SafeOperation.DelegateCall
+      })
+
+      expect(await getGuard(safe)).to.equal(ZeroAddress)
     })
   })
 

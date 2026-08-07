@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {IPolicy, Operation} from "../interfaces/IPolicy.sol";
 import {IPolicyEngine} from "../interfaces/IPolicyEngine.sol";
+import {ISafeModuleGuard} from "../interfaces/ISafeModuleGuard.sol";
 import {ISafeTransactionGuard} from "../interfaces/ISafeTransactionGuard.sol";
 import {AccessSelector} from "../libraries/AccessSelector.sol";
 
@@ -18,6 +19,8 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
  *        mechanism).
  *      - `WriteState`: mutates its own state, to stand in for a stateful policy and to prove
  *        stateful writes commit.
+ *      - `ReenterModuleGuardEntry`: re-enters the module-guard entry — the counterpart of
+ *        `ReenterGuardEntry`, also expected to be blocked by `Reentrancy`.
  *      For the re-entry modes it catches any revert and records the returned error data (and
  *      whether the re-entry succeeded) so tests can assert which guard fired, then returns the
  *      magic value so the outer check still succeeds.
@@ -27,7 +30,8 @@ contract ReentrantMockPolicy is IPolicy {
         None,
         ReenterGuardEntry,
         ReenterEngine,
-        WriteState
+        WriteState,
+        ReenterModuleGuardEntry
     }
 
     Mode public mode;
@@ -94,6 +98,14 @@ contract ReentrantMockPolicy is IPolicy {
             }
         } else if (mode == Mode.WriteState) {
             writes++;
+        } else if (mode == Mode.ReenterModuleGuardEntry) {
+            try ISafeModuleGuard(msg.sender).checkModuleTransaction(to, value, data, operation, address(this)) returns (
+                bytes32
+            ) {
+                revert ReentryDidNotRevert();
+            } catch (bytes memory err) {
+                lastReentryError = err;
+            }
         }
 
         return IPolicy.checkTransaction.selector;
