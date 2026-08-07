@@ -55,6 +55,7 @@ contract ERC20ApprovePolicy is IPolicy {
         uint256,
         bytes calldata data,
         Operation,
+        address,
         bytes calldata,
         AccessSelector.T
     ) external view override returns (bytes4 magicValue) {

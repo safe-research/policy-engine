@@ -162,7 +162,8 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         // always reverts atomically, keeping policy state in sync with execution outcome.
         require(safeTxGas == 0, NonZeroSafeTxGas());
 
-        _enterCheck(msg.sender);
+        // An owner transaction has no authorizing module.
+        _enterCheck(msg.sender, address(0));
         checkTransaction(msg.sender, to, value, data, operation, _decodeContext(signatures));
         _exitCheck();
     }
@@ -184,8 +185,10 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
         Operation operation,
         address module
     ) external override returns (bytes32 moduleTxHash) {
-        _enterCheck(msg.sender);
-        checkTransaction(msg.sender, to, value, data, operation, abi.encode(module));
+        // The module travels out-of-band so policies receive it authenticated; passing it through
+        // `context` let any executor forge a module identity from the Safe `signatures`.
+        _enterCheck(msg.sender, module);
+        checkTransaction(msg.sender, to, value, data, operation, _emptyContext());
         _exitCheck();
         return bytes32(0);
     }

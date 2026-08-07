@@ -19,6 +19,7 @@ contract AllowPolicy is IPolicy {
         uint256,
         bytes calldata,
         Operation,
+        address,
         bytes calldata,
         AccessSelector.T
     ) external pure override returns (bytes4 magicValue) {

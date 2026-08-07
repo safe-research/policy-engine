@@ -18,12 +18,16 @@ contract MultiSendPolicy is IPolicy {
     // Not `view`: this policy performs no writes itself, but it recurses into the (now non-`view`)
     // engine `checkTransaction` for each sub-transaction, which a `view` function cannot call. The
     // recursion passes the same `safe`, so it satisfies the engine's same-Safe confinement.
+    //
+    // `module` is intentionally not forwarded: the engine reads it from its own state for recursive
+    // checks too, so sub-transactions inherit the batch's authorization path.
     function checkTransaction(
         address safe,
         address to,
         uint256 value,
         bytes calldata data,
         Operation operation,
+        address,
         bytes calldata context,
         AccessSelector.T
     ) external override returns (bytes4 magicValue) {

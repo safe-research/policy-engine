@@ -41,6 +41,7 @@ contract MockPolicy is IPolicy {
         uint256,
         bytes calldata,
         Operation,
+        address,
         bytes calldata,
         AccessSelector.T
     ) external view override returns (bytes4 magicValue) {
