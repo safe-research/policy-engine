@@ -12,7 +12,7 @@ import {
   randomSelector,
   SafeOperation
 } from '../src/utils'
-import { deploySafePolicyGuard, deploySafeContracts, deployMockPolicy } from './deploy'
+import { deployAllowPolicy, deploySafePolicyGuard, deploySafeContracts, deployMockPolicy } from './deploy'
 
 describe('SafePolicyGuard', function () {
   async function fixture() {
@@ -280,6 +280,111 @@ describe('SafePolicyGuard', function () {
       )
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
         .withArgs(ZeroAddress)
+    })
+
+    it('Should not be able to configure immediately even when a policy permits calling the guard', async function () {
+      // The guard check is not enough on its own to keep `configureImmediately` unreachable: a
+      // permissive fallback lets the call through, which would defeat the delay entirely.
+      const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
+      const guardAddress = await safePolicyGuard.getAddress()
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: guardAddress,
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [createConfiguration({ policy: await mockPolicy.getAddress() })]
+        ])
+      })
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+      })
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+            [createConfiguration({ target: randomAddress(), policy: await mockPolicy.getAddress() })]
+          ])
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardAlreadyEnabled')
+    })
+
+    it('Should not be able to configure immediately when only the module guard is enabled', async function () {
+      const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
+      const guardAddress = await safePolicyGuard.getAddress()
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress])
+      })
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+            [createConfiguration({ policy: await mockPolicy.getAddress() })]
+          ])
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardAlreadyEnabled')
+    })
+
+    it('Should be able to configure immediately again after the guard is removed', async function () {
+      // The documented re-bootstrap flow: once the guard is off, the pre-guard path is available
+      // again to clean up the policy that allowed its removal.
+      const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
+      const guardAddress = await safePolicyGuard.getAddress()
+      const { allowPolicy } = await deployAllowPolicy()
+
+      // Allow `setGuard` so the guard can be removed, then enable the guard.
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: guardAddress,
+        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+          [
+            createConfiguration({
+              target: await safe.getAddress(),
+              selector: safe.interface.getFunction('setGuard')?.selector,
+              policy: await allowPolicy.getAddress()
+            })
+          ]
+        ])
+      })
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+      })
+
+      // Remove the guard, which the AllowPolicy above permits.
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('setGuard', [ZeroAddress])
+      })
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
+            [createConfiguration({ target: randomAddress(), policy: await mockPolicy.getAddress() })]
+          ])
+        })
+      ).to.not.be.reverted
     })
   })
 

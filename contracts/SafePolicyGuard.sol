@@ -3,6 +3,7 @@ pragma solidity =0.8.28;
 
 import {PolicyEngine, AccessSelector} from "./core/PolicyEngine.sol";
 import {IERC165} from "./interfaces/IERC165.sol";
+import {ISafe} from "./interfaces/ISafe.sol";
 import {ISafeModuleGuard} from "./interfaces/ISafeModuleGuard.sol";
 import {ISafeTransactionGuard} from "./interfaces/ISafeTransactionGuard.sol";
 import {Operation} from "./interfaces/Operation.sol";
@@ -34,6 +35,18 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @notice The delay for the configuration change and guard removal.
      */
     uint256 public immutable DELAY;
+
+    /**
+     * @dev `keccak256("guard_manager.guard.address")` — Safe's `GuardManager.GUARD_STORAGE_SLOT`.
+     */
+    bytes32 private constant _GUARD_STORAGE_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
+
+    /**
+     * @dev `keccak256("module_manager.module_guard.address")` — Safe's
+     *      `ModuleManager.MODULE_GUARD_STORAGE_SLOT`.
+     */
+    bytes32 private constant _MODULE_GUARD_STORAGE_SLOT =
+        0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
 
     /**
      * @notice The pending policies root for a Safe.
@@ -74,6 +87,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @notice Error indicating the policy root configuration is pending.
      */
     error RootConfigurationPending();
+
+    /**
+     * @notice Error indicating this contract is already installed as a guard on the caller.
+     */
+    error GuardAlreadyEnabled();
 
     /**
      * @notice Emitted when a policy root is configured.
@@ -227,14 +245,49 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     }
 
     /**
-     * @notice Configures and confirms multiple policies for an address.
+     * @dev Whether this contract is installed on `safe` as either its transaction or module guard.
+     */
+    function _isGuardEnabled(address safe) internal view returns (bool) {
+        return
+            _readGuardSlot(safe, _GUARD_STORAGE_SLOT) == address(this) ||
+            _readGuardSlot(safe, _MODULE_GUARD_STORAGE_SLOT) == address(this);
+    }
+
+    /**
+     * @dev Reads a guard address out of `safe`'s storage. Returns `address(0)` when `safe` does not
+     *      answer `getStorageAt` as a Safe would, so that non-Safe callers keep working rather than
+     *      reverting on a failed decode.
+     */
+    function _readGuardSlot(address safe, bytes32 slot) private view returns (address guard) {
+        (bool success, bytes memory returnData) = safe.staticcall(
+            abi.encodeCall(ISafe.getStorageAt, (uint256(slot), 1))
+        );
+
+        // A Safe answers with `bytes` holding a single word, ABI-encoded as
+        // 32 offset + 32 length + 32 data.
+        if (!success || returnData.length < 96) {
+            return address(0);
+        }
+
+        // Read the data word directly rather than via `abi.decode`, which would revert on a caller
+        // that answers with a malformed encoding instead of leaving it to the length check above.
+        // solhint-disable-next-line no-inline-assembly
+        assembly ("memory-safe") {
+            guard := and(mload(add(returnData, 0x60)), 0xffffffffffffffffffffffffffffffffffffffff)
+        }
+    }
+
+    /**
+     * @notice Configures and confirms multiple policies for an address, bypassing the delay.
      * @param configurations The array of configurations to be applied.
-     * @dev This does not have to check if the guard is enabled, as if the guard is set,
-     *      then this tx will fail in `checkTransaction`.
-     *      This is a convenience function to avoid having to call `configurePolicy` and then
-     *      `confirmPolicy` separately with a delay.
+     * @dev Only usable before this contract is installed as a guard, which is what keeps the delay
+     *      unavoidable afterwards. Relying on the guard check to reject the call is not sufficient:
+     *      any policy permitting a `CALL` to this contract (a permissive fallback, for example)
+     *      would let it through and defeat the timelock, including for guard removal.
      */
     function configureImmediately(Configuration[] calldata configurations) external virtual {
+        require(!_isGuardEnabled(msg.sender), GuardAlreadyEnabled());
+
         for (uint256 i = 0; i < configurations.length; i++) {
             _confirmPolicy(
                 msg.sender,
