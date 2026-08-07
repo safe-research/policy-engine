@@ -7,6 +7,7 @@ import {ISafe} from "./interfaces/ISafe.sol";
 import {ISafeModuleGuard} from "./interfaces/ISafeModuleGuard.sol";
 import {ISafeTransactionGuard} from "./interfaces/ISafeTransactionGuard.sol";
 import {Operation} from "./interfaces/Operation.sol";
+import {SignatureExtension} from "./libraries/SignatureExtension.sol";
 
 /**
  * @title Safe Policy Guard
@@ -47,6 +48,12 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      */
     bytes32 private constant _MODULE_GUARD_STORAGE_SLOT =
         0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
+
+    /**
+     * @dev `keccak256("SafePolicyGuard.PolicyContext.v1")` — the {SignatureExtension} type carrying
+     *      policy context in the Safe `signatures` tail.
+     */
+    bytes32 private constant _CONTEXT_TYPE_HASH = 0x5aa463b48748f9162d63ae93151d31fed6a96b34cd2ae84ef33d25b0bdea62e4;
 
     /**
      * @notice The pending policies root for a Safe.
@@ -238,24 +245,16 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
 
     /**
      * @dev Decodes additional context to pass to the policy from the signatures bytes.
+     *      Absence is not an error, so signatures carrying no context (plain ECDSA owner signatures)
+     *      work for policies that do not need any. A blob that claims the type but is malformed does
+     *      revert, which denies the transaction rather than silently yielding empty context.
      */
     function _decodeContext(bytes calldata signatures) internal pure returns (bytes calldata) {
-        // We intentionally don't fail when the signatures are too short to decode the context. This
-        // is so that signatures for normal transactions without any additional context (i.e. with
-        // ECDSA signatures from the owners) works for policies that don't require any additional
-        // context without needing to append `uint256(0)` to the signatures bytes.
-
-        if (signatures.length < 66) {
+        if (!SignatureExtension.has(signatures, _CONTEXT_TYPE_HASH)) {
             return _emptyContext();
         }
 
-        uint256 end = signatures.length - 32;
-        uint256 length = uint256(bytes32(signatures[end:]));
-        if (length > end) {
-            return _emptyContext();
-        }
-
-        return signatures[end - length:end];
+        return SignatureExtension.payload(signatures, _CONTEXT_TYPE_HASH);
     }
 
     function _emptyContext() internal pure returns (bytes calldata) {
