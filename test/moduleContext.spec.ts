@@ -78,7 +78,7 @@ describe('Authenticated module parameter', function () {
         [
           createConfiguration({
             policy: policyAddress,
-            data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
+            data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
           })
         ]
       ])
@@ -236,7 +236,7 @@ describe('Authenticated module parameter', function () {
             createConfiguration({
               target: subTarget,
               policy: await allowedModulePolicy.getAddress(),
-              data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
+              data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
             })
           ]
         ])
@@ -279,7 +279,7 @@ describe('Authenticated module parameter', function () {
             [
               createConfiguration({
                 policy: await allowedModulePolicy.getAddress(),
-                data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [ZeroAddress])
+                data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [ZeroAddress, true])
               })
             ]
           ])

@@ -50,21 +50,27 @@ contract AllowedModulePolicy is IPolicy {
 
     /**
      * @inheritdoc IPolicy
-     * @dev This policy does not require any configuration.
-     *      QUESTION: Should we allow DELEGATECALLs to be configured?
+     * @param data ABI-encoded `(address module, bool allowed)`. Pass `false` to revoke a module that
+     *        was previously allowed.
+     * @dev Both granting and revoking go through here, so an authorisation can be withdrawn without
+     *      detaching the policy from its access selector. Note the allowlist is namespaced by
+     *      `(msg.sender, safe)` and survives the policy being detached and later re-attached, so a
+     *      revocation must be applied explicitly rather than implied by removing the policy.
      */
     function configure(address safe, AccessSelector.T, bytes memory data) external override returns (bool) {
-        address module = abi.decode(data, (address));
+        (address module, bool allowed) = abi.decode(data, (address, bool));
         // A zero entry would match every owner transaction, making this policy an allow-all.
         require(module != address(0), InvalidModule());
 
-        $allowedModules[msg.sender][safe][module] = true;
+        $allowedModules[msg.sender][safe][module] = allowed;
 
         return true;
     }
 
     /**
      * @notice Check if a module is allowed for a given safe.
+     * @param policyGuard The policy guard that configured the entry. State is namespaced by the
+     *        configuring caller, so reading another namespace returns `false`.
      * @param safe The address of the safe.
      * @param module The address of the module.
      * @return True if the module is allowed, false otherwise.
