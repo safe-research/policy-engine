@@ -3,7 +3,9 @@ pragma solidity ^0.8.28;
 
 /**
  * @title Multi Send Library Interface
- * @dev <https://eips.ethereum.org/EIPS/eip-165>
+ * @dev The subset of Safe's `MultiSend` library that {MultiSendPolicy} needs in order to recognise
+ *      and decode a batch. See
+ *      <https://github.com/safe-global/safe-smart-account/blob/main/contracts/libraries/MultiSend.sol>.
  */
 interface IMultiSend {
     /**
