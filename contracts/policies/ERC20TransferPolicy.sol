@@ -35,7 +35,7 @@ contract ERC20TransferPolicy is IPolicy {
     error InvalidTransfer();
 
     /**
-     * @notice Error indicating the caller is not authorized.
+     * @notice Error indicating the recipient is not on the Safe's allowlist for this token.
      */
     error Unauthorized();
 
@@ -81,7 +81,8 @@ contract ERC20TransferPolicy is IPolicy {
      * @notice Configure the recipient list for a Safe and token.
      * @param safe The Safe address.
      * @param access The access selector.
-     * @param data The recipient address.
+     * @param data ABI-encoded {RecipientData} array. Each entry sets or clears one recipient, so a
+     *        single call can both allow and revoke.
      * @dev Callable by anyone; state is namespaced by `msg.sender`, keeping the policy engine and policies logically separate.
      */
     function configure(address safe, AccessSelector.T access, bytes memory data) external returns (bool) {

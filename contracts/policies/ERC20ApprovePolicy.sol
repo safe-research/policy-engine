@@ -35,7 +35,7 @@ contract ERC20ApprovePolicy is IPolicy {
     error InvalidApproval();
 
     /**
-     * @notice Error indicating the caller is unauthorized.
+     * @notice Error indicating the spender is not on the Safe's allowlist for this token.
      */
     error Unauthorized();
 
@@ -78,7 +78,8 @@ contract ERC20ApprovePolicy is IPolicy {
      * @notice Configure the spender list for a Safe and token.
      * @param safe The Safe address.
      * @param access The access selector.
-     * @param data The spender address.
+     * @param data ABI-encoded {SpenderData} array. Each entry sets or clears one spender, so a
+     *        single call can both allow and revoke.
      * @dev Callable by anyone; state is namespaced by `msg.sender`, keeping the policy engine and policies logically separate.
      */
     function configure(address safe, AccessSelector.T access, bytes memory data) external returns (bool) {
