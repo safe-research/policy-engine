@@ -3,6 +3,7 @@ pragma solidity =0.8.28;
 
 import {PolicyEngine, AccessSelector} from "./core/PolicyEngine.sol";
 import {IERC165} from "./interfaces/IERC165.sol";
+import {IPolicyEngine} from "./interfaces/IPolicyEngine.sol";
 import {ISafe} from "./interfaces/ISafe.sol";
 import {ISafeModuleGuard} from "./interfaces/ISafeModuleGuard.sol";
 import {ISafeTransactionGuard} from "./interfaces/ISafeTransactionGuard.sol";
@@ -138,6 +139,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      */
     function supportsInterface(bytes4 interfaceId) external view virtual override returns (bool) {
         return
+            interfaceId == type(IPolicyEngine).interfaceId || // 0x04a9e3cd
             interfaceId == type(ISafeModuleGuard).interfaceId || // 0x58401ed8
             interfaceId == type(ISafeTransactionGuard).interfaceId || // 0xe6d7a83a
             interfaceId == type(IERC165).interfaceId; // 0x01ffc9a7
