@@ -32,6 +32,8 @@ interface IPolicyEngine {
      * @param data The transaction data.
      * @param operation The type of operation of the transaction.
      * @param context The context of the transaction.
+     * @return policy The policy that authorized the transaction, or `address(0)` when the
+     *         transaction was permitted without consulting one.
      * @dev The function needs to implement policy validation check.
      */
     function checkTransaction(
