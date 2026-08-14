@@ -52,7 +52,7 @@ describe('AllowedModulePolicy', function () {
       await allowedModulePolicy.connect(owner).configure(
         safeAddress,
         0, // AccessSelector doesn't matter for this policy
-        ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
+        ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
       )
 
       // Check that the configured module is allowed
@@ -72,7 +72,7 @@ describe('AllowedModulePolicy', function () {
       await allowedModulePolicy.configure(
         safeAddress,
         0, // AccessSelector doesn't matter for this policy
-        ethers.AbiCoder.defaultAbiCoder().encode(['address'], [moduleAddress])
+        ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
       )
 
       // Call checkTransaction and verify it returns the magic value. The module is passed as its
@@ -91,6 +91,43 @@ describe('AllowedModulePolicy', function () {
       // This should match IPolicy.checkTransaction.selector. Derived rather than hardcoded, since
       // the magic value is the selector and therefore moves whenever the signature changes.
       expect(result).to.equal(allowedModulePolicy.interface.getFunction('checkTransaction').selector)
+    })
+
+    it('Should revoke a previously allowed module', async function () {
+      const { owner, safe, allowedModulePolicy, testModule } = await loadFixture(fixture)
+
+      const safeAddress = await safe.getAddress()
+      const moduleAddress = await testModule.getAddress()
+      const encode = (module: string, allowed: boolean) =>
+        ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [module, allowed])
+
+      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encode(moduleAddress, true))
+      expect(await allowedModulePolicy.isModuleAllowed(owner, safeAddress, moduleAddress)).to.be.true
+
+      // Revoking is expressible without detaching the policy from its access selector.
+      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encode(moduleAddress, false))
+      expect(await allowedModulePolicy.isModuleAllowed(owner, safeAddress, moduleAddress)).to.be.false
+
+      // …and the grant can be reinstated afterwards.
+      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encode(moduleAddress, true))
+      expect(await allowedModulePolicy.isModuleAllowed(owner, safeAddress, moduleAddress)).to.be.true
+    })
+
+    it('Should reject a zero module address regardless of the allowed flag', async function () {
+      const { owner, safe, allowedModulePolicy } = await loadFixture(fixture)
+      const safeAddress = await safe.getAddress()
+
+      for (const allowed of [true, false]) {
+        await expect(
+          allowedModulePolicy
+            .connect(owner)
+            .configure(
+              safeAddress,
+              0,
+              ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [ZeroAddress, allowed])
+            )
+        ).to.be.revertedWithCustomError(allowedModulePolicy, 'InvalidModule')
+      }
     })
 
     it('Should revert on checkTransaction for non-allowed module', async function () {
@@ -134,7 +171,7 @@ describe('AllowedModulePolicy', function () {
         createConfiguration({
           target: target,
           policy: await allowedModulePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [testModuleAddress])
+          data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [testModuleAddress, true])
         })
       ]
 
@@ -187,7 +224,7 @@ describe('AllowedModulePolicy', function () {
         createConfiguration({
           target: target,
           policy: await allowedModulePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [testModuleAddress])
+          data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [testModuleAddress, true])
         })
       ]
 
