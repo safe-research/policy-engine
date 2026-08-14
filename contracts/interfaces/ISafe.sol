@@ -52,6 +52,19 @@ interface ISafe {
     function setGuard(address guard) external;
 
     /**
+     * @dev Set a module guard that checks transactions initiated by the module before execution
+     *      This can only be done via a Safe transaction.
+     *      ⚠️ IMPORTANT: Since a module guard has full power to block transaction execution
+     *        initiated via a module, a broken module guard can cause a denial of service for the
+     *        Safe modules. Make sure to carefully audit the module guard code and design recovery
+     *        mechanisms.
+     * @notice Set Module Guard `moduleGuard` for the Safe. Make sure you trust the module guard.
+     * @param moduleGuard The address of the module guard to be used or the zero address to disable
+     *        the module guard.
+     */
+    function setModuleGuard(address moduleGuard) external;
+
+    /**
      * @notice Reads `length` bytes of storage in the current contract
      * @param offset - the offset in the current contract's storage in words to start reading from
      * @param length - the number of words (32 bytes) of data to read
