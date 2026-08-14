@@ -21,8 +21,12 @@ interface IPolicy {
         uint256 value,
         bytes calldata data,
         Operation operation,
-        bytes calldata context
+        address module,
+        bytes calldata context,
+        AccessSelector.T access
     ) external returns (bytes4 magicValue);
+
+    function configure(address safe, AccessSelector.T access, bytes memory data) external returns (bool success);
 }
 ```
 
@@ -83,7 +87,7 @@ The policy to enforce is chosen based on an _access selectors_. These are simila
 
 * `ssss`: the 4 byte function selector
 * `o`: the operation flag, 0 for `CALL` and 1 for `DELEGATECALL` (just like the function parameter for Safe transactions).
-* `ffffffffffffffffffff`: the address of the contract being (delegate-)called
+* `tttttttttttttttttttt`: the address of the contract being (delegate-)called
 
 Some examples of the access selector for various Safe operations:
 
