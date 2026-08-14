@@ -66,6 +66,11 @@ abstract contract PolicyEngine is IPolicyEngine {
     error CrossSafeCheck();
 
     /**
+     * @notice Error indicating a module transaction tried to reach a configuration entry point.
+     */
+    error ModuleConfigurationDenied();
+
+    /**
      * @notice Error indicating access was denied.
      * @param policy The address of the policy that denied access.
      * @dev This error is thrown when a policy denies access to a transaction.
@@ -170,6 +175,8 @@ abstract contract PolicyEngine is IPolicyEngine {
         require(safe == $checkingSafe, CrossSafeCheck());
 
         if (_allowedCalls(to, value, data, operation)) {
+            // No policy changes permitted via module transaction
+            require($checkingModule == address(0), ModuleConfigurationDenied());
             return address(0);
         }
 
