@@ -81,6 +81,11 @@ describe('SafePolicyGuard', function () {
   })
 
   describe('supportsInterface', function () {
+    it('Should support the PolicyEngine interface', async function () {
+      const { safePolicyGuard } = await loadFixture(fixture)
+      expect(await safePolicyGuard.supportsInterface('0x04a9e3cd')).to.equal(true)
+    })
+
     it('Should support the SafeModuleGuard interface', async function () {
       const { safePolicyGuard } = await loadFixture(fixture)
       expect(await safePolicyGuard.supportsInterface('0x58401ed8')).to.equal(true)
