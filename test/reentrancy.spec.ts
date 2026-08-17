@@ -7,6 +7,7 @@ import {
   SafeOperation,
   createConfiguration,
   createSafe,
+  enableGuard,
   execTransaction,
   getConfigurationRoot,
   getSafeTransactionHash,
@@ -52,31 +53,17 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     return { ownerA, ownerB, safePolicyGuard, safeA, safeB }
   }
 
-  // Configures `policy` for `owner`'s Safe (via configureImmediately) using the given
-  // configuration overrides, then enables the guard on that Safe.
-  async function configureAndEnableGuard(owner: any, safe: any, safePolicyGuard: any, configurations: any[]) {
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: await safePolicyGuard.getAddress(),
-      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-    })
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: await safe.getAddress(),
-      data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-    })
-  }
-
   it('Should block a policy re-entering the guard during a check (Reentrancy)', async function () {
     const { ownerA, safePolicyGuard, safeA } = await loadFixture(fixture)
 
     const x = await deployReentrantPolicy()
     await x.setMode(Mode.ReenterGuardEntry)
-    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
-      createConfiguration({ policy: await x.getAddress() })
-    ])
+    await enableGuard({
+      owner: ownerA,
+      safe: safeA,
+      safePolicyGuard,
+      configurations: [createConfiguration({ policy: await x.getAddress() })]
+    })
 
     // Outer tx succeeds: the policy catches the (blocked) reentry and returns the magic value.
     await execTransaction({ owners: [ownerA], safe: safeA, to: randomAddress() })
@@ -104,9 +91,12 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     const policyX = await deployReentrantPolicy()
     await policyX.setMode(Mode.ReenterEngine)
     await policyX.setReenter(await safeB.getAddress(), randomAddress())
-    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
-      createConfiguration({ policy: await policyX.getAddress() })
-    ])
+    await enableGuard({
+      owner: ownerA,
+      safe: safeA,
+      safePolicyGuard,
+      configurations: [createConfiguration({ policy: await policyX.getAddress() })]
+    })
 
     // Safe A executes; X tries to drive a check for Safe B mid-check.
     await execTransaction({ owners: [ownerA], safe: safeA, to: randomAddress() })
@@ -133,10 +123,15 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     await policyX.setMode(Mode.ReenterEngine)
     await policyX.setReenter(await safeA.getAddress(), targetZ)
 
-    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
-      createConfiguration({ target: targetX, policy: await policyX.getAddress() }),
-      createConfiguration({ target: targetZ, policy: await policyZ.getAddress() })
-    ])
+    await enableGuard({
+      owner: ownerA,
+      safe: safeA,
+      safePolicyGuard,
+      configurations: [
+        createConfiguration({ target: targetX, policy: await policyX.getAddress() }),
+        createConfiguration({ target: targetZ, policy: await policyZ.getAddress() })
+      ]
+    })
 
     // Safe A executes a tx to targetX -> X -> re-enters the engine for A/targetZ -> Z.
     await execTransaction({ owners: [ownerA], safe: safeA, to: targetX })
@@ -151,9 +146,12 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
 
     const policy = await deployReentrantPolicy()
     await policy.setMode(Mode.WriteState)
-    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
-      createConfiguration({ policy: await policy.getAddress() })
-    ])
+    await enableGuard({
+      owner: ownerA,
+      safe: safeA,
+      safePolicyGuard,
+      configurations: [createConfiguration({ policy: await policy.getAddress() })]
+    })
 
     expect(await policy.writes()).to.equal(0n)
     await execTransaction({ owners: [ownerA], safe: safeA, to: randomAddress() })
@@ -166,9 +164,12 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     // The counterpart of the transaction-guard case above: both entry points call `_enterCheck`.
     const policy = await deployReentrantPolicy()
     await policy.setMode(Mode.ReenterModuleGuardEntry)
-    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
-      createConfiguration({ policy: await policy.getAddress() })
-    ])
+    await enableGuard({
+      owner: ownerA,
+      safe: safeA,
+      safePolicyGuard,
+      configurations: [createConfiguration({ policy: await policy.getAddress() })]
+    })
 
     await execTransaction({ owners: [ownerA], safe: safeA, to: randomAddress() })
 
@@ -211,16 +212,24 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     const { allowPolicy } = await deployAllowPolicy()
 
     const innerTarget = randomAddress()
-    await configureAndEnableGuard(ownerB, safeB, safePolicyGuard, [
-      createConfiguration({ target: innerTarget, policy: await allowPolicy.getAddress() })
-    ])
-    await configureAndEnableGuard(ownerA, safeA, safePolicyGuard, [
-      createConfiguration({
-        target: await safeB.getAddress(),
-        selector: safeB.interface.getFunction('execTransaction')?.selector,
-        policy: await allowPolicy.getAddress()
-      })
-    ])
+    await enableGuard({
+      owner: ownerB,
+      safe: safeB,
+      safePolicyGuard,
+      configurations: [createConfiguration({ target: innerTarget, policy: await allowPolicy.getAddress() })]
+    })
+    await enableGuard({
+      owner: ownerA,
+      safe: safeA,
+      safePolicyGuard,
+      configurations: [
+        createConfiguration({
+          target: await safeB.getAddress(),
+          selector: safeB.interface.getFunction('execTransaction')?.selector,
+          policy: await allowPolicy.getAddress()
+        })
+      ]
+    })
 
     // Safe B's owner pre-approves the inner hash so that Safe A can be the executor.
     const innerHash = await getSafeTransactionHash({ safe: safeB, to: innerTarget })

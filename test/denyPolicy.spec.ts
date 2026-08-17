@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, randomAddress } from '../src/utils'
+import { createConfiguration, createSafe, enableGuard, execTransaction, randomAddress } from '../src/utils'
 import { deploySafePolicyGuard, deploySafeContracts, deployAllowPolicy, deployDenyPolicy } from './deploy'
 
 describe('DenyPolicy', function () {
@@ -50,22 +50,12 @@ describe('DenyPolicy', function () {
       const target = randomAddress()
       const value = ethers.parseEther('1')
 
-      const configurations = [createConfiguration({ target, policy: await denyPolicy.getAddress() })]
-
-      // Configure the deny policy to send some value to the target
-      await execTransaction({
-        owners: [owner],
+      // Configure the deny policy for the target, then enable the guard
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [createConfiguration({ target, policy: await denyPolicy.getAddress() })]
       })
 
       // Send some ETH from owner to the safe for next transaction

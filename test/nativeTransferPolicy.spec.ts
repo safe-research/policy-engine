@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, SafeOperation } from '../src/utils'
+import { createConfiguration, createSafe, enableGuard, execTransaction, SafeOperation } from '../src/utils'
 import { deploySafeContracts, deploySafePolicyGuard, deployNativeTransferPolicy } from './deploy'
 
 describe('NativeTransferPolicy', function () {
@@ -48,27 +48,12 @@ describe('NativeTransferPolicy', function () {
 
       const amount = ethers.parseEther('1')
 
-      // Configure the native transfer policy
-      const configurations = [
-        createConfiguration({
-          policy: await nativeTransferPolicy.getAddress()
-        })
-      ]
-
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
+      // Configure the native transfer policy as the fallback, then enable the guard
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
       })
 
       // Get initial balances
@@ -94,27 +79,12 @@ describe('NativeTransferPolicy', function () {
     it('Should not allow native transfer with value = 0', async function () {
       const { owner, recipient, safePolicyGuard, safe, nativeTransferPolicy } = await loadFixture(fixture)
 
-      // Configure the native transfer policy
-      const configurations = [
-        createConfiguration({
-          policy: await nativeTransferPolicy.getAddress()
-        })
-      ]
-
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
+      // Configure the native transfer policy as the fallback, then enable the guard
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
       })
 
       // Try to execute a native transfer transaction with zero value (Default value is 0)
@@ -137,27 +107,12 @@ describe('NativeTransferPolicy', function () {
 
       const amount = ethers.parseEther('1')
 
-      // Configure the native transfer policy
-      const configurations = [
-        createConfiguration({
-          policy: await nativeTransferPolicy.getAddress()
-        })
-      ]
-
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
+      // Configure the native transfer policy as the fallback, then enable the guard
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
       })
 
       // Try to execute a transaction with data (non-native transfer)
