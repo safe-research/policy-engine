@@ -8,6 +8,7 @@ import {
   buildSafeTransaction,
   createConfiguration,
   createSafe,
+  enableGuard,
   execTransaction,
   getConfigurationRoot,
   getGuard,
@@ -55,22 +56,6 @@ describe('SafePolicyGuard', function () {
     const accessSelector = await AccessSelectorFactory.deploy()
 
     return { owner, other, safePolicyGuard, safe, delay, mockPolicy, accessSelector }
-  }
-
-  /** Installs `configurations` before the guard, then enables the transaction guard. */
-  async function enableGuardWithPolicy(owner: any, safe: any, safePolicyGuard: any, configurations: unknown[]) {
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: await safePolicyGuard.getAddress(),
-      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-    })
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: await safe.getAddress(),
-      data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-    })
   }
 
   describe('constructor', function () {
@@ -296,12 +281,7 @@ describe('SafePolicyGuard', function () {
       ]
 
       // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard })
 
       // Call the configure immediately function on safe using execTransaction helper function
       await expect(
@@ -322,19 +302,11 @@ describe('SafePolicyGuard', function () {
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
       const guardAddress = await safePolicyGuard.getAddress()
 
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: guardAddress,
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [createConfiguration({ policy: await mockPolicy.getAddress() })]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+        safePolicyGuard,
+        configurations: [createConfiguration({ policy: await mockPolicy.getAddress() })]
       })
 
       await expect(
@@ -380,25 +352,17 @@ describe('SafePolicyGuard', function () {
       const { allowPolicy } = await deployAllowPolicy()
 
       // Allow `setGuard` so the guard can be removed, then enable the guard.
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: guardAddress,
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            createConfiguration({
-              target: await safe.getAddress(),
-              selector: safe.interface.getFunction('setGuard')?.selector,
-              policy: await allowPolicy.getAddress()
-            })
-          ]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await safe.getAddress(),
+            selector: safe.interface.getFunction('setGuard')?.selector,
+            policy: await allowPolicy.getAddress()
+          })
+        ]
       })
 
       // Remove the guard, which the AllowPolicy above permits.
@@ -473,12 +437,7 @@ describe('SafePolicyGuard', function () {
       const configurationRoot = getConfigurationRoot(configuration)
 
       // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard })
 
       // Getting the timestamp of the configuration request
       const configurationRequestTimestamp = BigInt(await time.latest()) + 1n
@@ -636,12 +595,7 @@ describe('SafePolicyGuard', function () {
       const configurationRoot = getConfigurationRoot(configuration)
 
       // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard })
 
       // Call the request configuration function on safe using execTransaction helper function
       await execTransaction({
@@ -904,12 +858,7 @@ describe('SafePolicyGuard', function () {
       const configurationRoot = getConfigurationRoot(configuration)
 
       // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard })
 
       // Call the request configuration function on safe using execTransaction helper function
       await execTransaction({
@@ -996,12 +945,7 @@ describe('SafePolicyGuard', function () {
       const { owner, safePolicyGuard, safe } = await loadFixture(fixture)
 
       // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard })
 
       // Try to execute a transaction that is not configured
       await expect(
@@ -1046,9 +990,12 @@ describe('SafePolicyGuard', function () {
       // configured there); this one asserts the Safe actually forwards `safeTxGas` to the guard.
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
       const target = randomAddress()
-      await enableGuardWithPolicy(owner, safe, safePolicyGuard, [
-        createConfiguration({ target, policy: await mockPolicy.getAddress() })
-      ])
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
+      })
 
       await expect(
         execTransaction({ owners: [owner], safe, to: target, safeTxGas: 100_000n })
@@ -1058,9 +1005,12 @@ describe('SafePolicyGuard', function () {
     it('Should revert when gasPrice is non-zero', async function () {
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
       const target = randomAddress()
-      await enableGuardWithPolicy(owner, safe, safePolicyGuard, [
-        createConfiguration({ target, policy: await mockPolicy.getAddress() })
-      ])
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
+      })
 
       await expect(execTransaction({ owners: [owner], safe, to: target, gasPrice: 1n })).to.be.revertedWithCustomError(
         safePolicyGuard,
@@ -1119,14 +1069,19 @@ describe('SafePolicyGuard', function () {
       const { allowPolicy } = await deployAllowPolicy()
       const { multiSend } = await deploySafeContracts()
 
-      await enableGuardWithPolicy(owner, safe, safePolicyGuard, [
-        createConfiguration({
-          target: await multiSend.getAddress(),
-          selector: multiSend.interface.getFunction('multiSend')?.selector,
-          operation: SafeOperation.DelegateCall,
-          policy: await allowPolicy.getAddress()
-        })
-      ])
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await multiSend.getAddress(),
+            selector: multiSend.interface.getFunction('multiSend')?.selector,
+            operation: SafeOperation.DelegateCall,
+            policy: await allowPolicy.getAddress()
+          })
+        ]
+      })
 
       const configurations = [
         createConfiguration({
@@ -1189,19 +1144,11 @@ describe('SafePolicyGuard', function () {
       const recorder = await (await ethers.getContractFactory('ContextRecorderPolicy')).deploy()
       const target = randomAddress()
 
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [createConfiguration({ target, policy: await recorder.getAddress() })]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [createConfiguration({ target, policy: await recorder.getAddress() })]
       })
 
       return { ...base, recorder, target }
@@ -1261,34 +1208,14 @@ describe('SafePolicyGuard', function () {
       await statefulPolicy.setMode(ReentrantMockPolicyMode.WriteState)
 
       const testModule = await (await ethers.getContractFactory('TestModule')).deploy()
-      const guardAddress = await safePolicyGuard.getAddress()
-      const safeAddress = await safe.getAddress()
 
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: guardAddress,
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [createConfiguration({ policy: await statefulPolicy.getAddress() })]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: safeAddress,
-        data: safe.interface.encodeFunctionData('enableModule', [await testModule.getAddress()])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: safeAddress,
-        data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: safeAddress,
-        data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+        safePolicyGuard,
+        configurations: [createConfiguration({ policy: await statefulPolicy.getAddress() })],
+        module: await testModule.getAddress(),
+        moduleGuard: true
       })
 
       // A contract with neither `receive` nor a matching function reverts on a 0-value empty call.
