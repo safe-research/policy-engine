@@ -9,6 +9,9 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 /**
  * @title Co-Signer Policy
  * @dev Ensure a Safe transaction has been co-signed.
+ * @dev Transaction path only: the `nonce() - 1` below assumes the nonce increment that
+ *      `execTransactionFromModule` never performs, so no co-signature can validate on the module
+ *      path. It fails closed, but do not rely on this policy to gate module transactions.
  */
 contract CoSignerPolicy is IPolicy {
     /**

@@ -331,5 +331,24 @@ describe('ERC20TransferPolicy', function () {
       expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
         .false
     })
+
+    it('Should reject calldata that is neither transfer nor transferFrom', async function () {
+      // `configure` pins the selector to one of the two, so the engine can only route those here.
+      // This is the policy defending its own decode when called directly, which anyone may do.
+      const { safe, erc20TransferPolicy, token } = await loadFixture(fixture)
+
+      await expect(
+        erc20TransferPolicy.checkTransaction(
+          safe,
+          token,
+          0n,
+          token.interface.encodeFunctionData('approve', [randomAddress(), 1n]),
+          SafeOperation.Call,
+          ZeroAddress,
+          '0x',
+          0n
+        )
+      ).to.be.revertedWithCustomError(erc20TransferPolicy, 'InvalidTransfer')
+    })
   })
 })

@@ -8,6 +8,8 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
 /**
  * @title ERC-20 Approve Policy
  * @dev Allow ERC-20 approvals only for specific spender addresses.
+ * @dev `approve(spender, 0)` is permitted for any spender, so revoking never depends on the
+ *      allowlist. Any spender's allowance can therefore be zeroed regardless of configuration.
  */
 contract ERC20ApprovePolicy is IPolicy {
     using AccessSelector for AccessSelector.T;

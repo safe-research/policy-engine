@@ -171,6 +171,25 @@ describe('MultiSendPolicy', function () {
         })
       ).to.not.be.reverted
     })
+
+    it('Should reject calldata that is not a MultiSend batch', async function () {
+      // `configure` pins the selector, so the engine can only route `multiSend` calldata here. This
+      // is the policy defending its own decode when called directly, which anyone may do.
+      const { safe, multiSendPolicy } = await loadFixture(fixture)
+
+      await expect(
+        multiSendPolicy.checkTransaction(
+          safe,
+          randomAddress(),
+          0n,
+          randomSelector(),
+          SafeOperation.DelegateCall,
+          ZeroAddress,
+          '0x',
+          0n
+        )
+      ).to.be.revertedWithCustomError(multiSendPolicy, 'InvalidMultiSend')
+    })
   })
 
   describe('Transaction Validation', function () {
