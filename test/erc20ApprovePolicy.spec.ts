@@ -6,6 +6,7 @@ import { ethers } from 'hardhat'
 import {
   createConfiguration,
   createSafe,
+  enableGuard,
   encodeAllowlistConfig,
   execTransaction,
   randomAddress,
@@ -64,21 +65,8 @@ describe('ERC20ApprovePolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Verify there was no previous approval
       expect(await token.allowance(await safe.getAddress(), spender)).to.equal(0)
@@ -111,21 +99,8 @@ describe('ERC20ApprovePolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Try to execute the approve transaction
       await expect(
@@ -159,21 +134,8 @@ describe('ERC20ApprovePolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Try to execute a transfer transaction (non-approve)
       await expect(
@@ -213,21 +175,8 @@ describe('ERC20ApprovePolicy', function () {
       // Verify the approval was successful
       expect(await token.allowance(await safe.getAddress(), spender)).to.equal(amount)
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Try to execute the zero amount approve transaction
       await execTransaction({
