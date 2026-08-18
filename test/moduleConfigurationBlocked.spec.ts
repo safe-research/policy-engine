@@ -8,10 +8,12 @@ import {
   buildMultiSendSafeTx,
   createConfiguration,
   createSafe,
+  enableGuard,
   execTransaction,
   getConfigurationRoot,
   SafeOperation
 } from '../src/utils'
+import type { SafePolicyGuard } from '../typechain-types'
 import { deployAllowPolicy, deployMultiSendPolicy, deploySafeContracts, deploySafePolicyGuard } from './deploy'
 
 /**
@@ -46,27 +48,11 @@ describe('Module policy-change blocking', function () {
     })
 
     /** Installs `cfgs`, then enables both guard slots (module guard first — see below). */
-    async function configurePolicies(cfgs: unknown[] = []) {
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: guardAddress,
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [cfgs])
-      })
-      // Module guard first: once the transaction guard is live, `setModuleGuard` is itself a guarded
-      // self-call needing a configured policy, which this fixture does not install.
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: safeAddress,
-        data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: safeAddress,
-        data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
-      })
+    async function configurePolicies(cfgs: SafePolicyGuard.ConfigurationStruct[] = []) {
+      // `enableGuard` installs the module guard before the transaction guard, which matters here:
+      // once the transaction guard is live, `setModuleGuard` is itself a guarded self-call needing
+      // a configured policy, which this fixture does not install.
+      await enableGuard({ owner, safe, safePolicyGuard, configurations: cfgs, moduleGuard: true })
     }
 
     /** A root the owners have requested and matured, ready to apply. */

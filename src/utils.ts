@@ -96,6 +96,17 @@ export const EIP712_SAFE_TX_TYPE = {
 export const POLICY_CONTEXT_TYPE_HASH = ethers.id('SafePolicyGuard.PolicyContext.v1')
 
 /**
+ * Encodes `AllowedModulePolicy` configuration data.
+ * @param module The module to grant or revoke.
+ * @param allowed Whether the module is allowed; pass `false` to revoke.
+ * @dev Each policy's configuration shape lives in exactly one place here, so a change to a policy's
+ *      `configure` signature is a one-line change in the tests rather than a hunt through the suite.
+ */
+export function encodeModuleConfig(module: AddressLike, allowed = true): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [module, allowed])
+}
+
+/**
  * Appends a `SignatureExtension` envelope carrying `payload` to a Safe `signatures` blob.
  * @param signatures The owner signatures.
  * @param payload The policy context to carry in the tail.
@@ -366,6 +377,69 @@ export async function execTransaction({
 export async function calculateSafeMessageHash(safeAddress: string, message: string, chainId: number): Promise<string> {
   return ethers.TypedDataEncoder.hash({ verifyingContract: safeAddress, chainId }, EIP712_SAFE_MESSAGE_TYPE, {
     message
+  })
+}
+
+export type EnableGuardParameters = {
+  owner: Signer
+  safe: Safe
+  safePolicyGuard: SafePolicyGuard
+  configurations?: SafePolicyGuard.ConfigurationStruct[]
+  /** Also install the module guard. Needed for any test exercising the module path. */
+  moduleGuard?: boolean
+  /** Enable this module on the Safe before installing the guards. */
+  module?: string
+}
+
+/**
+ * Configures policies while no guard is installed, then installs the guard(s).
+ * @dev The ordering matters and is the reason this is a helper: `configureImmediately` is rejected
+ *      once either guard points at the policy guard, so all configuration must happen first.
+ *      Replaces the per-file `harden`/`configureAndEnableGuard`/`enableGuardWithPolicy` variants.
+ */
+export async function enableGuard({
+  owner,
+  safe,
+  safePolicyGuard,
+  configurations = [],
+  moduleGuard = false,
+  module
+}: EnableGuardParameters): Promise<void> {
+  const guardAddress = await safePolicyGuard.getAddress()
+  const safeAddress = await safe.getAddress()
+
+  if (configurations.length > 0) {
+    await execTransaction({
+      owners: [owner],
+      safe,
+      to: guardAddress,
+      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
+    })
+  }
+
+  if (module !== undefined) {
+    await execTransaction({
+      owners: [owner],
+      safe,
+      to: safeAddress,
+      data: safe.interface.encodeFunctionData('enableModule', [module])
+    })
+  }
+
+  if (moduleGuard) {
+    await execTransaction({
+      owners: [owner],
+      safe,
+      to: safeAddress,
+      data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress])
+    })
+  }
+
+  await execTransaction({
+    owners: [owner],
+    safe,
+    to: safeAddress,
+    data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
   })
 }
 
