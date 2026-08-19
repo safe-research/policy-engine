@@ -40,7 +40,7 @@ describe('MultiSendPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0x7),
       safeProxyFactory,
@@ -245,7 +245,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the policies for all transactions
-      await enableGuard({ owner, safe, safePolicyGuard, configurations: configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations: configurations })
 
       // Build MultiSend transaction
       const safeTx = await buildMultiSendSafeTx(multiSend, txs, await safe.nonce())
@@ -305,7 +305,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the policies for all transactions
-      await enableGuard({ owner, safe, safePolicyGuard, configurations: configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations: configurations })
 
       // Build MultiSend transaction with an unconfigured transaction
       const txs = [
@@ -342,7 +342,7 @@ describe('MultiSendPolicy', function () {
       const amount = ethers.parseEther('1')
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -404,7 +404,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the multiSend policy
-      await enableGuard({ owner, safe, safePolicyGuard, configurations: multiSendConfiguration })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations: multiSendConfiguration })
 
       const configurationCall = [
         createConfiguration({
@@ -518,7 +518,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the policies for all transactions
-      await enableGuard({ owner, safe, safePolicyGuard, configurations: configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations: configurations })
 
       // Get initial balances
       const initialRecipientBalance = await ethers.provider.getBalance(await recipient.getAddress())
@@ -617,7 +617,7 @@ describe('MultiSendPolicy', function () {
           policy: await multiSendPolicy.getAddress()
         })
       ]
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       const txs = [
         buildSafeTransaction({
@@ -666,7 +666,7 @@ describe('MultiSendPolicy', function () {
           policy: await multiSendPolicy.getAddress()
         })
       ]
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       const txs = [
         buildSafeTransaction({

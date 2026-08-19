@@ -18,7 +18,7 @@ export async function safePolicyGuardFixture() {
 
   const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
   const safe = await createSafe({
-    owner,
+    owners: [owner],
     guard: ZeroAddress, // No guard at this point
     saltNonce: BigInt(0x1),
     safeProxyFactory,

@@ -63,7 +63,7 @@ describe('SafePolicyGuard -- delayed configuration', function () {
       const configurationRoot = getConfigurationRoot(configuration)
 
       // Enable the guard on safe
-      await enableGuard({ owner, safe, safePolicyGuard })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
 
       // Getting the timestamp of the configuration request
       const configurationRequestTimestamp = BigInt(await time.latest()) + 1n
@@ -221,7 +221,7 @@ describe('SafePolicyGuard -- delayed configuration', function () {
       const configurationRoot = getConfigurationRoot(configuration)
 
       // Enable the guard on safe
-      await enableGuard({ owner, safe, safePolicyGuard })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
 
       // Call the request configuration function on safe using execTransaction helper function
       await execTransaction({
@@ -484,7 +484,7 @@ describe('SafePolicyGuard -- delayed configuration', function () {
       const configurationRoot = getConfigurationRoot(configuration)
 
       // Enable the guard on safe
-      await enableGuard({ owner, safe, safePolicyGuard })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
 
       // Call the request configuration function on safe using execTransaction helper function
       await execTransaction({

@@ -57,7 +57,7 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
       const { owner, safePolicyGuard, safe } = await loadFixture(fixture)
 
       // Enable the guard on safe
-      await enableGuard({ owner, safe, safePolicyGuard })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
 
       // Try to execute a transaction that is not configured
       await expect(
@@ -103,7 +103,7 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
       const target = randomAddress()
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
@@ -118,7 +118,7 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
       const target = randomAddress()
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
@@ -182,7 +182,7 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
       const { multiSend } = await deploySafeContracts()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [

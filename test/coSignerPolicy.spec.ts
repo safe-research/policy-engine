@@ -27,7 +27,7 @@ describe('CoSignerPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0x6),
       safeProxyFactory,
@@ -76,7 +76,7 @@ describe('CoSignerPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Get initial balances
       const initialRecipientBalance = await ethers.provider.getBalance(await recipient.getAddress())
@@ -132,7 +132,7 @@ describe('CoSignerPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Try to execute the transaction without co-signer signature
       await expect(
@@ -164,7 +164,7 @@ describe('CoSignerPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Create the transaction data
       const txData: TransactionParametersWithNonce = {
@@ -217,7 +217,7 @@ describe('CoSignerPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Get initial balances
       const initialRecipientBalance = await ethers.provider.getBalance(await recipient.getAddress())
@@ -291,7 +291,7 @@ describe('CoSignerPolicy', function () {
       const { owner, recipient, safePolicyGuard, safe, coSignerPolicy } = await loadFixture(fixture)
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -350,7 +350,7 @@ describe('CoSignerPolicy', function () {
           policy: await multiSendPolicy.getAddress()
         })
       ]
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       const nonce = await safe.nonce()
 
@@ -406,7 +406,7 @@ describe('CoSignerPolicy', function () {
           data: encodeCoSignerConfig(await cosigner.getAddress())
         })
       ]
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       const nonce = await safe.nonce()
       const transfer: TransactionParametersWithNonce = buildSafeTransaction({

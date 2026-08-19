@@ -13,7 +13,6 @@ import {
 import { GUARD_STORAGE_SLOT } from '../lib/constants'
 import { sameHexString } from '../test/deploy/util/strings'
 import { Safe, SafePolicyGuard, SafeProxyFactory } from '../typechain-types'
-import { ISafe } from '../typechain-types/contracts/interfaces/ISafe'
 
 const { solidityPacked } = ethers
 
@@ -23,7 +22,10 @@ export enum SafeOperation {
 }
 
 export type SafeCreationOptions = {
-  owner: HardhatEthersSigner
+  /** The Safe's owners. The first also sends the setup transactions. */
+  owners: HardhatEthersSigner[]
+  /** Signature threshold. Defaults to 1. */
+  threshold?: number
   guard?: AddressLike
   saltNonce?: BigNumberish
   safeModule?: AddressLike
@@ -54,7 +56,10 @@ export type TransactionParametersWithNonce = TransactionParameters & {
 }
 
 export type TransactionParametersWithSafe = TransactionParameters & {
-  safe: ISafe
+  // The generated `Safe` type rather than `ISafe`: `ISafe` is the subset the contracts need, and
+  // an overloaded member there (such as `checkNSignatures`) is not structurally assignable from
+  // the generated `Safe`, which the tests actually pass.
+  safe: Safe
 }
 
 export type ExecTransactionParameters = TransactionParametersWithSafe & {
@@ -114,6 +119,27 @@ export function encodeModuleConfig(module: string, allowed = true): string {
  */
 export function encodeCoSignerConfig(cosigner: string): string {
   return ethers.AbiCoder.defaultAbiCoder().encode(['address'], [cosigner])
+}
+
+/**
+ * Encodes `IncreasedThresholdPolicy` configuration data.
+ * @param maxAbsentOwners How many owners may be absent; `0` demands a signature from every owner.
+ */
+export function encodeIncreasedThresholdConfig(maxAbsentOwners: number): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [maxAbsentOwners])
+}
+
+/**
+ * Packs owner signatures into the blob Safe's `checkNSignatures` expects.
+ * @param signatures The individual owner signatures.
+ * @dev Safe requires ascending owner order, and rejects the blob outright otherwise.
+ */
+export function buildSignatureBytes(signatures: SafeSignature[]): string {
+  return ethers.concat(
+    [...signatures]
+      .sort((a, b) => a.signer.toLowerCase().localeCompare(b.signer.toLowerCase()))
+      .map((signature) => signature.data)
+  )
 }
 
 /**
@@ -211,7 +237,8 @@ export async function getGuard(safe: Safe): Promise<string> {
  * @returns The created Safe contract instance.
  */
 export async function createSafe({
-  owner,
+  owners,
+  threshold = 1,
   guard,
   saltNonce,
   safeModule,
@@ -225,8 +252,8 @@ export async function createSafe({
   }
 
   const initializer = singleton.interface.encodeFunctionData('setup', [
-    [await owner.getAddress()],
-    1,
+    await Promise.all(owners.map((o) => o.getAddress())),
+    threshold,
     ZeroAddress,
     '0x',
     fallbackHandler,
@@ -250,15 +277,16 @@ export async function createSafe({
     await safeProxyFactory.createProxyWithNonce(singleton, initializer, saltNonce).then((tx) => tx.wait())
   }
 
-  const safe = singleton.attach(safeAddress).connect(owner) as Safe
+  const safe = singleton.attach(safeAddress).connect(owners[0]) as Safe
   if (guard !== undefined) {
     const currentGuard = await getGuard(safe)
     if (!sameHexString(currentGuard, guard as string)) {
       execTransaction({
-        owners: [owner],
+        owners: owners,
         safe: safe,
         to: safe,
-        data: safe.interface.encodeFunctionData('setGuard', [guard])
+        data: safe.interface.encodeFunctionData('setGuard', [guard]),
+        signingMethod: owners.length > 1 ? 'signMessage' : 'preApprovedSignature'
       }).then((tx) => tx.wait())
     }
   }
@@ -266,10 +294,11 @@ export async function createSafe({
     const isModuleEnabled = await safe.isModuleEnabled(safeModule)
     if (!isModuleEnabled) {
       execTransaction({
-        owners: [owner],
+        owners: owners,
         safe: safe,
         to: safe,
-        data: safe.interface.encodeFunctionData('enableModule', [safeModule])
+        data: safe.interface.encodeFunctionData('enableModule', [safeModule]),
+        signingMethod: owners.length > 1 ? 'signMessage' : 'preApprovedSignature'
       }).then((tx) => tx.wait())
     }
   }
@@ -424,7 +453,8 @@ export async function calculateSafeMessageHash(safeAddress: string, message: str
 }
 
 export type EnableGuardParameters = {
-  owner: Signer
+  /** The signers for the configuring transactions; must meet the Safe's threshold. */
+  owners: Signer[]
   safe: Safe
   safePolicyGuard: SafePolicyGuard
   configurations?: SafePolicyGuard.ConfigurationStruct[]
@@ -441,7 +471,7 @@ export type EnableGuardParameters = {
  *      Replaces the per-file `harden`/`configureAndEnableGuard`/`enableGuardWithPolicy` variants.
  */
 export async function enableGuard({
-  owner,
+  owners,
   safe,
   safePolicyGuard,
   configurations = [],
@@ -450,39 +480,44 @@ export async function enableGuard({
 }: EnableGuardParameters): Promise<void> {
   const guardAddress = await safePolicyGuard.getAddress()
   const safeAddress = await safe.getAddress()
+  const signingMethod = owners.length > 1 ? ('signMessage' as const) : ('preApprovedSignature' as const)
 
   if (configurations.length > 0) {
     await execTransaction({
-      owners: [owner],
+      owners,
       safe,
       to: guardAddress,
-      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
+      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations]),
+      signingMethod
     })
   }
 
   if (module !== undefined) {
     await execTransaction({
-      owners: [owner],
+      owners,
       safe,
       to: safeAddress,
-      data: safe.interface.encodeFunctionData('enableModule', [module])
+      data: safe.interface.encodeFunctionData('enableModule', [module]),
+      signingMethod
     })
   }
 
   if (moduleGuard) {
     await execTransaction({
-      owners: [owner],
+      owners,
       safe,
       to: safeAddress,
-      data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress])
+      data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress]),
+      signingMethod
     })
   }
 
   await execTransaction({
-    owners: [owner],
+    owners,
     safe,
     to: safeAddress,
-    data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+    data: safe.interface.encodeFunctionData('setGuard', [guardAddress]),
+    signingMethod
   })
 }
 

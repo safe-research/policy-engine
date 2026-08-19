@@ -16,7 +16,7 @@ describe('NativeTransferPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0x5),
       safeProxyFactory,
@@ -50,7 +50,7 @@ describe('NativeTransferPolicy', function () {
 
       // Configure the native transfer policy as the fallback, then enable the guard
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
@@ -81,7 +81,7 @@ describe('NativeTransferPolicy', function () {
 
       // Configure the native transfer policy as the fallback, then enable the guard
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
@@ -109,7 +109,7 @@ describe('NativeTransferPolicy', function () {
 
       // Configure the native transfer policy as the fallback, then enable the guard
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
