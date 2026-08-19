@@ -8,6 +8,7 @@ import {
   createSafe,
   enableGuard,
   encodeAllowlistConfig,
+  Permission,
   execTransaction,
   randomAddress,
   SafeOperation
@@ -260,8 +261,8 @@ describe('ERC20ApprovePolicy', function () {
     })
   })
 
-  describe('isSpenderAllowed', function () {
-    it('Should report whether a spender is allowed for a Safe and token', async function () {
+  describe('getSpenderPermission', function () {
+    it('Should report the permission recorded for a spender', async function () {
       // State is namespaced by `msg.sender`, which the getter takes explicitly, so configuring
       // directly makes the deployer the namespace to query.
       const { owner, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
@@ -273,14 +274,85 @@ describe('ERC20ApprovePolicy', function () {
       )
       const spender = randomAddress()
 
-      expect(await erc20ApprovePolicy.isSpenderAllowed(owner, safe, token, spender)).to.equal(false)
+      expect(await erc20ApprovePolicy.getSpenderPermission(owner, safe, token, spender)).to.equal(Permission.None)
 
       await erc20ApprovePolicy.connect(owner).configure(safe, access, encodeAllowlistConfig([spender]))
-      expect(await erc20ApprovePolicy.isSpenderAllowed(owner, safe, token, spender)).to.equal(true)
+      expect(await erc20ApprovePolicy.getSpenderPermission(owner, safe, token, spender)).to.equal(Permission.Always)
 
-      // The same call can revoke, which is why `configure` takes a flag per entry.
-      await erc20ApprovePolicy.connect(owner).configure(safe, access, encodeAllowlistConfig([spender], false))
-      expect(await erc20ApprovePolicy.isSpenderAllowed(owner, safe, token, spender)).to.equal(false)
+      // A one-time grant is recorded distinctly from an open-ended one.
+      await erc20ApprovePolicy.connect(owner).configure(safe, access, encodeAllowlistConfig([spender], Permission.Once))
+      expect(await erc20ApprovePolicy.getSpenderPermission(owner, safe, token, spender)).to.equal(Permission.Once)
+
+      // The same call can revoke, which is why `configure` takes a permission per entry.
+      await erc20ApprovePolicy.connect(owner).configure(safe, access, encodeAllowlistConfig([spender], Permission.None))
+      expect(await erc20ApprovePolicy.getSpenderPermission(owner, safe, token, spender)).to.equal(Permission.None)
+    })
+  })
+
+  describe('One-Time Grants', function () {
+    it('Should spend a one-time spender grant on the first approval', async function () {
+      const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const spender = randomAddress()
+      const amount = ethers.parseEther('100')
+
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('approve').selector,
+            policy: await erc20ApprovePolicy.getAddress(),
+            data: encodeAllowlistConfig([spender], Permission.Once)
+          })
+        ]
+      })
+
+      const approve = token.interface.encodeFunctionData('approve', [spender, amount])
+
+      await execTransaction({ owners: [owner], safe, to: await token.getAddress(), data: approve })
+      expect(await token.allowance(safe, spender)).to.equal(amount)
+      expect(await erc20ApprovePolicy.getSpenderPermission(safePolicyGuard, safe, token, spender)).to.equal(
+        Permission.None
+      )
+
+      await expect(
+        execTransaction({ owners: [owner], safe, to: await token.getAddress(), data: approve })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+    })
+
+    it('Should not spend a one-time grant on a zero-amount approval', async function () {
+      const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const spender = randomAddress()
+
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('approve').selector,
+            policy: await erc20ApprovePolicy.getAddress(),
+            data: encodeAllowlistConfig([spender], Permission.Once)
+          })
+        ]
+      })
+
+      // Revoking an allowance bypasses the allowlist entirely, so it must not burn the grant.
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await token.getAddress(),
+        data: token.interface.encodeFunctionData('approve', [spender, 0])
+      })
+
+      expect(await erc20ApprovePolicy.getSpenderPermission(safePolicyGuard, safe, token, spender)).to.equal(
+        Permission.Once
+      )
     })
   })
 })

@@ -8,6 +8,7 @@ import {
   createSafe,
   enableGuard,
   encodeAllowlistConfig,
+  Permission,
   execTransaction,
   randomAddress,
   SafeOperation
@@ -271,14 +272,17 @@ describe('ERC20TransferPolicy', function () {
 
       // First, allow the recipient
       await erc20TransferPolicy.configure(ZeroAddress, access, encodeAllowlistConfig([recipientAddress]))
-      expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
-        .true
+      expect(
+        await erc20TransferPolicy.getRecipientPermission(deployer, ZeroAddress, tokenAddress, recipientAddress)
+      ).to.equal(Permission.Always)
 
       // Then, disallow the same recipient
-      await expect(erc20TransferPolicy.configure(ZeroAddress, access, encodeAllowlistConfig([recipientAddress], false)))
-        .to.not.be.reverted
-      expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
-        .false
+      await expect(
+        erc20TransferPolicy.configure(ZeroAddress, access, encodeAllowlistConfig([recipientAddress], Permission.None))
+      ).to.not.be.reverted
+      expect(
+        await erc20TransferPolicy.getRecipientPermission(deployer, ZeroAddress, tokenAddress, recipientAddress)
+      ).to.equal(Permission.None)
     })
 
     it('Should reject calldata that is neither transfer nor transferFrom', async function () {
@@ -298,6 +302,74 @@ describe('ERC20TransferPolicy', function () {
           0n
         )
       ).to.be.revertedWithCustomError(erc20TransferPolicy, 'InvalidTransfer')
+    })
+  })
+
+  describe('One-Time Grants', function () {
+    it('Should spend a one-time recipient grant on the first transfer', async function () {
+      const { owner, recipient, safePolicyGuard, safe, erc20TransferPolicy, token } = await loadFixture(fixture)
+
+      const amount = ethers.parseEther('100')
+      const recipientAddress = await recipient.getAddress()
+
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('transfer').selector,
+            policy: await erc20TransferPolicy.getAddress(),
+            data: encodeAllowlistConfig([recipientAddress], Permission.Once)
+          })
+        ]
+      })
+
+      const transfer = token.interface.encodeFunctionData('transfer', [recipientAddress, amount])
+
+      await execTransaction({ owners: [owner], safe, to: await token.getAddress(), data: transfer })
+      expect(await token.balanceOf(recipientAddress)).to.equal(amount)
+      expect(await erc20TransferPolicy.getRecipientPermission(safePolicyGuard, safe, token, recipientAddress)).to.equal(
+        Permission.None
+      )
+
+      // The grant is spent, so an identical transfer is now unauthorised.
+      await expect(
+        execTransaction({ owners: [owner], safe, to: await token.getAddress(), data: transfer })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+
+      expect(await token.balanceOf(recipientAddress)).to.equal(amount)
+    })
+
+    it('Should leave an open-ended grant in place across transfers', async function () {
+      const { owner, recipient, safePolicyGuard, safe, erc20TransferPolicy, token } = await loadFixture(fixture)
+
+      const amount = ethers.parseEther('100')
+      const recipientAddress = await recipient.getAddress()
+
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('transfer').selector,
+            policy: await erc20TransferPolicy.getAddress(),
+            data: encodeAllowlistConfig([recipientAddress], Permission.Always)
+          })
+        ]
+      })
+
+      const transfer = token.interface.encodeFunctionData('transfer', [recipientAddress, amount])
+      await execTransaction({ owners: [owner], safe, to: await token.getAddress(), data: transfer })
+      await execTransaction({ owners: [owner], safe, to: await token.getAddress(), data: transfer })
+
+      expect(await token.balanceOf(recipientAddress)).to.equal(amount * 2n)
+      expect(await erc20TransferPolicy.getRecipientPermission(safePolicyGuard, safe, token, recipientAddress)).to.equal(
+        Permission.Always
+      )
     })
   })
 })
