@@ -290,5 +290,48 @@ describe('ERC20ApprovePolicy', function () {
         })
       ).to.be.revertedWithCustomError(erc20ApprovePolicy, 'InvalidOperation')
     })
+
+    it('Should reject calldata that is not an ERC-20 approve', async function () {
+      // `configure` pins the selector, so the engine can only route `approve` calldata here. This is
+      // the policy defending its own decode when called directly, which anyone may do.
+      const { safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      await expect(
+        erc20ApprovePolicy.checkTransaction(
+          safe,
+          token,
+          0n,
+          token.interface.encodeFunctionData('transfer', [randomAddress(), 1n]),
+          SafeOperation.Call,
+          ZeroAddress,
+          '0x',
+          0n
+        )
+      ).to.be.revertedWithCustomError(erc20ApprovePolicy, 'InvalidApproval')
+    })
+  })
+
+  describe('isSpenderAllowed', function () {
+    it('Should report whether a spender is allowed for a Safe and token', async function () {
+      // State is namespaced by `msg.sender`, which the getter takes explicitly, so configuring
+      // directly makes the deployer the namespace to query.
+      const { owner, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+      const accessSelector = await (await ethers.getContractFactory('TestAccessSelector')).deploy()
+      const access = await accessSelector.create(
+        token,
+        token.interface.getFunction('approve').selector,
+        SafeOperation.Call
+      )
+      const spender = randomAddress()
+
+      expect(await erc20ApprovePolicy.isSpenderAllowed(owner, safe, token, spender)).to.equal(false)
+
+      await erc20ApprovePolicy.connect(owner).configure(safe, access, encodeAllowlistConfig([spender]))
+      expect(await erc20ApprovePolicy.isSpenderAllowed(owner, safe, token, spender)).to.equal(true)
+
+      // The same call can revoke, which is why `configure` takes a flag per entry.
+      await erc20ApprovePolicy.connect(owner).configure(safe, access, encodeAllowlistConfig([spender], false))
+      expect(await erc20ApprovePolicy.isSpenderAllowed(owner, safe, token, spender)).to.equal(false)
+    })
   })
 })

@@ -6,16 +6,18 @@ import { ethers } from 'hardhat'
 import {
   createConfiguration,
   createSafe,
+  enableGuard,
   encodeCoSignerConfig,
   execTransaction,
   safeSignTypedData,
+  SafeOperation,
   TransactionParametersWithNonce
 } from '../src/utils'
 import { deploySafeContracts, deploySafePolicyGuard, deployCoSignerPolicy } from './deploy'
 
 describe('CoSignerPolicy', function () {
   async function fixture() {
-    const [, owner, cosigner, recipient, other] = await ethers.getSigners()
+    const [deployer, owner, cosigner, recipient, other] = await ethers.getSigners()
 
     // Deploy the SafePolicyGuard contract
     const { safePolicyGuard } = await deploySafePolicyGuard()
@@ -40,6 +42,7 @@ describe('CoSignerPolicy', function () {
     })
 
     return {
+      deployer,
       owner,
       cosigner,
       recipient,
@@ -325,6 +328,50 @@ describe('CoSignerPolicy', function () {
       expect(finalRecipientBalance - initialRecipientBalance).to.equal(amount)
       expect(finalOtherBalance - initialOtherBalance).to.equal(amount)
       expect(initialSafeBalance - finalSafeBalance).to.equal(amount * 2n)
+    })
+
+    it('Should reject a transaction when the configured co-signer is the zero address', async function () {
+      // `configure` takes whatever address it is handed, so a Safe can configure the policy with no
+      // co-signer at all. That has to fail closed at check time rather than accept any signature.
+      const { owner, recipient, safePolicyGuard, safe, coSignerPolicy } = await loadFixture(fixture)
+
+      await enableGuard({
+        owner,
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await recipient.getAddress(),
+            policy: await coSignerPolicy.getAddress(),
+            data: encodeCoSignerConfig(ZeroAddress)
+          })
+        ]
+      })
+
+      await expect(
+        execTransaction({ owners: [owner], safe, to: await recipient.getAddress(), value: ethers.parseEther('1') })
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await coSignerPolicy.getAddress(),
+          coSignerPolicy.interface.encodeErrorResult('NoCosignerConfigured', [])
+        )
+    })
+  })
+
+  describe('getCoSigner', function () {
+    it('Should report the co-signer configured for an access selector', async function () {
+      // State is namespaced by `msg.sender`, and `getCoSigner` reads that same namespace, so
+      // configuring directly is what makes the getter observable.
+      const { deployer, cosigner, recipient, safe, coSignerPolicy } = await loadFixture(fixture)
+      const accessSelector = await (await ethers.getContractFactory('TestAccessSelector')).deploy()
+      const access = await accessSelector.create(await recipient.getAddress(), '0x00000000', SafeOperation.Call)
+
+      expect(await coSignerPolicy.connect(deployer).getCoSigner(safe, access)).to.equal(ZeroAddress)
+
+      await coSignerPolicy.connect(deployer).configure(safe, access, encodeCoSignerConfig(await cosigner.getAddress()))
+
+      expect(await coSignerPolicy.connect(deployer).getCoSigner(safe, access)).to.equal(await cosigner.getAddress())
     })
   })
 })

@@ -384,6 +384,40 @@ describe('SafePolicyGuard', function () {
         })
       ).to.not.be.reverted
     })
+
+    it('Should let a caller that is not a Safe configure its own policies', async function () {
+      // The guard probes for an installed guard with `staticcall(getStorageAt)`. A caller with no
+      // such function and no fallback makes that call revert outright, which must read as "no guard
+      // installed" rather than propagate -- policy state is namespaced by `msg.sender`, so a
+      // non-Safe caller configuring itself is legitimate.
+      const { safePolicyGuard, mockPolicy } = await loadFixture(fixture)
+      const configurer = await (await ethers.getContractFactory('TestNonSafeConfigurer')).deploy()
+      const target = randomAddress()
+
+      await expect(
+        configurer.configure(safePolicyGuard, [createConfiguration({ target, policy: await mockPolicy.getAddress() })])
+      ).to.not.be.reverted
+
+      const [, policy] = await safePolicyGuard.getPolicy(configurer, target, '0x00000000', SafeOperation.Call)
+      expect(policy).to.equal(await mockPolicy.getAddress())
+    })
+
+    it('Should not read revert data from a failed guard-slot probe', async function () {
+      // A caller whose `getStorageAt` reverts with a payload shaped exactly like a successful answer,
+      // planting the guard's own address in the word the guard reads. Only the call status separates
+      // this from a real answer: dropping that check makes the guard read the plant, decide it is
+      // already installed, and refuse the configuration.
+      const { safePolicyGuard, mockPolicy } = await loadFixture(fixture)
+      const configurer = await (await ethers.getContractFactory('TestRevertingStorageConfigurer')).deploy()
+      const target = randomAddress()
+
+      await expect(
+        configurer.configure(safePolicyGuard, [createConfiguration({ target, policy: await mockPolicy.getAddress() })])
+      ).to.not.be.reverted
+
+      const [, policy] = await safePolicyGuard.getPolicy(configurer, target, '0x00000000', SafeOperation.Call)
+      expect(policy).to.equal(await mockPolicy.getAddress())
+    })
   })
 
   describe('requestConfiguration', function () {
