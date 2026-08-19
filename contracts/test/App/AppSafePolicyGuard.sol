@@ -10,6 +10,11 @@ import {IPolicyEngine} from "../../interfaces/IPolicyEngine.sol";
 /**
  * @title App Safe Policy Guard
  * @dev Used for Safe App demo purposes.
+ * @dev NOT FOR PRODUCTION USE, on any network. It is deployed to mainnets as well as testnets so the
+ *      Safe App demo can read configurations from the contract instead of running an indexer, which
+ *      is why it widens `_allowedCalls` and overrides the configuration entry points. Deployment is
+ *      gated behind the `DEMO` flag, and it is untested and outside the audited surface. Use
+ *      {SafePolicyGuard}.
  */
 contract AppSafePolicyGuard is SafePolicyGuard {
     using AccessSelector for AccessSelector.T;

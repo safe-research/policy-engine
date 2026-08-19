@@ -179,3 +179,14 @@ npm run deploy -- <network>
 ```
 
 Note: Ensure proper configuration of delay parameters based on your security requirements. 
+
+### `AppSafePolicyGuard` is for the demo only
+
+`SafePolicyGuard` is the guard intended for use. Setting the `DEMO` flag deploys `AppSafePolicyGuard`
+in its place — a subclass that exists so the Safe App demo can read configurations from the contract
+instead of running an indexer. To do that it widens `_allowedCalls` and overrides the configuration
+entry points.
+
+It is recorded in `networks.json` on mainnets as well as testnets, but **those deployments are
+demonstrations and must not be used in production.** It lives under `contracts/test/`, carries no
+tests, and is outside the audited surface.
