@@ -6,6 +6,7 @@ import { ethers } from 'hardhat'
 import {
   createSafe,
   SafeOperation,
+  enableGuard,
   execTransaction,
   randomAddress,
   randomSelector,
@@ -227,22 +228,14 @@ describe('PolicyEngine Edge Cases', function () {
       // The fallback denies (MockPolicy returns a zero magic value) and the exact match allows, so
       // a success can only mean the exact match was selected.
       await mockPolicy.setRevertTransaction(true)
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            createConfiguration({ policy: await mockPolicy.getAddress() }),
-            createConfiguration({ target, policy: await allowPolicy.getAddress() })
-          ]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({ policy: await mockPolicy.getAddress() }),
+          createConfiguration({ target, policy: await allowPolicy.getAddress() })
+        ]
       })
 
       await expect(execTransaction({ owners: [owner], safe, to: target })).to.not.be.reverted
@@ -258,19 +251,13 @@ describe('PolicyEngine Edge Cases', function () {
       const { allowPolicy } = await deployAllowPolicy()
 
       // The operation is part of the access selector, so the two fallbacks are separate keys.
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [createConfiguration({ operation: SafeOperation.DelegateCall, policy: await allowPolicy.getAddress() })]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({ operation: SafeOperation.DelegateCall, policy: await allowPolicy.getAddress() })
+        ]
       })
 
       await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
@@ -285,19 +272,11 @@ describe('PolicyEngine Edge Cases', function () {
       const { owner, safe, safePolicyGuard, mockPolicy } = base
       const target = randomAddress()
 
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [createConfiguration({ target, policy: await mockPolicy.getAddress() })]
       })
 
       return { ...base, target }
