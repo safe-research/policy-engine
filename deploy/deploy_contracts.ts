@@ -59,6 +59,7 @@ const deploy: DeployFunction = async function ({ run, getChainId, getNamedAccoun
   // Policies
   await deployContract('AllowPolicy')
   await deployContract('DenyPolicy')
+  await deployContract('OneTimeAllowPolicy')
   await deployContract('AllowedModulePolicy')
   await deployContract('CoSignerPolicy')
   await deployContract('ERC20ApprovePolicy')
