@@ -27,4 +27,6 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
+      # Runs after the build, which generates the TypeChain types it needs.
+      - run: npm run build:ts:typecheck
       - run: npm run test
