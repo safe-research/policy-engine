@@ -19,5 +19,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["./hardhat.config.ts", "./deploy/**/*", "./test/**/*", "./src/**/*", "./lib/**/*"]
+  "include": ["./hardhat.config.ts", "./deploy/**/*", "./script/**/*", "./test/**/*", "./src/**/*", "./lib/**/*"]
 }

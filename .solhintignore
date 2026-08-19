@@ -1,0 +1,8 @@
+# Vendored verbatim from `safe-research/safenet`, which formats with `forge fmt` and owns the
+# lint rules these files were written against. Reformatting them here would make them undiffable
+# against upstream, which is how they are kept in sync and reviewed.
+contracts/libraries/ConsensusMessages.sol
+contracts/libraries/EpochRollover.sol
+contracts/libraries/FROST.sol
+contracts/libraries/Secp256k1.sol
+contracts/libraries/SignatureExtension.sol

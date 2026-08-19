@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: LGPL-3.0-only
+pragma solidity ^0.8.30;
+// Vendored from `safe-research/safenet` at `5de7e86900b27844d00458d8dc85cbaa0d27f2ea`,
+// `contracts/src/libraries/ConsensusMessages.sol`. Only the licence header and the `@/libraries/`
+// import alias differ; `npm run vendor:check` enforces that.
+
+import {Secp256k1} from "./Secp256k1.sol";
+
+/**
+ * @title Consensus Messages
+ * @notice Library for computing consensus messages that are signed by the validator set.
+ */
+library ConsensusMessages {
+    // ============================================================
+    // CONSTANTS
+    // ============================================================
+
+    /**
+     * @custom:precomputed keccak256("EIP712Domain(uint256 chainId,address verifyingContract)")
+     */
+    bytes32 internal constant DOMAIN_TYPEHASH = hex"47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218";
+
+    /**
+     * @custom:precomputed keccak256("EpochRollover(uint64 activeEpoch,uint64 proposedEpoch,uint64 rolloverBlock,uint256 groupKeyX,uint256 groupKeyY)")
+     */
+    bytes32 internal constant EPOCH_ROLLOVER_TYPEHASH =
+        hex"13de01993286119c9a7628720a5b7d7c32841dbf2d23752b59de86a7e03fe1bf";
+
+    /**
+     * @custom:precomputed keccak256("TransactionProposal(uint64 epoch,address oracle,bytes oracleData,bytes32 safeTxHash)")
+     */
+    bytes32 internal constant TRANSACTION_PROPOSAL_TYPEHASH =
+        hex"9c6706f5afdb1de99f5ad39011e7770ce471f51d78380634f6cedb21a648b8d0";
+
+    // ============================================================
+    // INTERNAL FUNCTIONS
+    // ============================================================
+
+    /**
+     * @notice Computes the domain separator hash.
+     * @param chainId The chain ID.
+     * @param verifyingContract The address of the verifying contract.
+     * @return result The domain separator hash.
+     */
+    function domain(uint256 chainId, address verifyingContract) internal pure returns (bytes32 result) {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, DOMAIN_TYPEHASH)
+            mstore(add(ptr, 0x20), chainId)
+            mstore(add(ptr, 0x40), verifyingContract)
+            result := keccak256(ptr, 0x60)
+        }
+    }
+
+    /**
+     * @notice Computes the epoch rollover message that must be signed by the active group.
+     * @param domainSeparator The EIP-712 domain separator.
+     * @param activeEpoch The current active epoch.
+     * @param proposedEpoch The proposed new epoch.
+     * @param rolloverBlock The block number for the rollover.
+     * @param groupKey The group public key.
+     * @return result The epoch rollover message hash.
+     */
+    function epochRollover(
+        bytes32 domainSeparator,
+        uint64 activeEpoch,
+        uint64 proposedEpoch,
+        uint64 rolloverBlock,
+        Secp256k1.Point memory groupKey
+    ) internal pure returns (bytes32 result) {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, EPOCH_ROLLOVER_TYPEHASH)
+            mstore(add(ptr, 0x20), activeEpoch)
+            mstore(add(ptr, 0x40), proposedEpoch)
+            mstore(add(ptr, 0x60), rolloverBlock)
+            mcopy(add(ptr, 0x80), groupKey, 0x40)
+            mstore(add(ptr, 0x22), keccak256(ptr, 0xc0))
+            mstore(ptr, hex"1901")
+            mstore(add(ptr, 0x02), domainSeparator)
+            result := keccak256(ptr, 0x42)
+        }
+    }
+
+    /**
+     * @notice Computes the transaction proposal message that must be attested to by validators.
+     * @dev The message's `bytes oracleData` member is EIP-712 encoded as its `keccak256`, so callers pass the
+     *      pre-computed `oracleDataHash` directly. A caller holding the full data (e.g. `proposeTransaction`) hashes
+     *      it at the callsite; a caller holding only the hash (the guard, from its attestation trailer) uses it as-is.
+     *      Either way the raw data stays with the oracle contract and is never needed to rebuild the signed message.
+     * @param domainSeparator The EIP-712 domain separator.
+     * @param epoch The epoch for the transaction proposal.
+     * @param oracle The address of the oracle contract used for evaluation.
+     * @param oracleDataHash The `keccak256` of the arbitrary oracle-specific data.
+     * @param safeTxHash The hash of the Safe transaction.
+     * @return result The transaction proposal message hash, used as the oracle requestId.
+     */
+    function transactionProposal(
+        bytes32 domainSeparator,
+        uint64 epoch,
+        address oracle,
+        bytes32 oracleDataHash,
+        bytes32 safeTxHash
+    ) internal pure returns (bytes32 result) {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, TRANSACTION_PROPOSAL_TYPEHASH)
+            mstore(add(ptr, 0x20), epoch)
+            mstore(add(ptr, 0x40), oracle)
+            mstore(add(ptr, 0x60), oracleDataHash)
+            mstore(add(ptr, 0x80), safeTxHash)
+            mstore(add(ptr, 0x22), keccak256(ptr, 0xa0))
+            mstore(ptr, hex"1901")
+            mstore(add(ptr, 0x02), domainSeparator)
+            result := keccak256(ptr, 0x42)
+        }
+    }
+}

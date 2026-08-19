@@ -1,0 +1,8 @@
+# Vendored verbatim from `safe-research/safenet`; see `.solhintignore` for the rationale. Listed
+# here as well because `npm run lint:fix:sol` invokes `prettier -w contracts/` directly, which
+# would otherwise rewrite them regardless of the solhint ignore.
+contracts/libraries/ConsensusMessages.sol
+contracts/libraries/EpochRollover.sol
+contracts/libraries/FROST.sol
+contracts/libraries/Secp256k1.sol
+contracts/libraries/SignatureExtension.sol

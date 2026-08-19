@@ -157,6 +157,8 @@ Note: If the Safe reactivates the guard, this policy should be removed. This nee
 
 ## Deployment note
 
+Contracts compile for the **Cancun** EVM, which the vendored Safenet libraries require (they use `mcopy`). Chains that have not activated the Cancun upgrade are not deployment targets.
+
 Every change to the guard changes its bytecode and therefore its CREATE2 address. Existing deployments must be redeployed and Safes re-pointed at the new address; a Safe keeps referencing whichever address it was given.
 
 ## Testing
