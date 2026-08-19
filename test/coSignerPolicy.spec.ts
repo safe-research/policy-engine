@@ -4,6 +4,8 @@ import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
 import {
+  buildMultiSendSafeTx,
+  buildSafeTransaction,
   createConfiguration,
   createSafe,
   enableGuard,
@@ -13,7 +15,7 @@ import {
   SafeOperation,
   TransactionParametersWithNonce
 } from '../src/utils'
-import { deploySafeContracts, deploySafePolicyGuard, deployCoSignerPolicy } from './deploy'
+import { deploySafeContracts, deploySafePolicyGuard, deployCoSignerPolicy, deployMultiSendPolicy } from './deploy'
 
 describe('CoSignerPolicy', function () {
   async function fixture() {
@@ -23,7 +25,7 @@ describe('CoSignerPolicy', function () {
     const { safePolicyGuard } = await deploySafePolicyGuard()
 
     // Deploy the Safe contracts
-    const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
+    const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
     const safe = await createSafe({
       owner,
       guard: ZeroAddress, // No guard at this point
@@ -34,6 +36,9 @@ describe('CoSignerPolicy', function () {
 
     // Deploy CoSignerPolicy contract
     const { coSignerPolicy } = await deployCoSignerPolicy()
+
+    // Deploy MultiSendPolicy contract
+    const { multiSendPolicy } = await deployMultiSendPolicy()
 
     // Fund the Safe with some ETH
     await owner.sendTransaction({
@@ -49,7 +54,9 @@ describe('CoSignerPolicy', function () {
       other,
       safe,
       safePolicyGuard,
-      coSignerPolicy
+      coSignerPolicy,
+      multiSend,
+      multiSendPolicy
     }
   }
 
@@ -320,6 +327,119 @@ describe('CoSignerPolicy', function () {
       await coSignerPolicy.connect(deployer).configure(safe, access, encodeCoSignerConfig(await cosigner.getAddress()))
 
       expect(await coSignerPolicy.connect(deployer).getCoSigner(safe, access)).to.equal(await cosigner.getAddress())
+    })
+  })
+  describe('Co-Signature Replay', function () {
+    it('Should not let a batch spend the same co-signature more than once', async function () {
+      const { owner, cosigner, recipient, safePolicyGuard, safe, coSignerPolicy, multiSend, multiSendPolicy } =
+        await loadFixture(fixture)
+
+      const amount = ethers.parseEther('1')
+      const multiSendSelector = multiSend.interface.getFunction('multiSend')?.selector
+
+      const configurations = [
+        createConfiguration({
+          target: await recipient.getAddress(),
+          policy: await coSignerPolicy.getAddress(),
+          data: encodeCoSignerConfig(await cosigner.getAddress())
+        }),
+        createConfiguration({
+          target: await multiSend.getAddress(),
+          selector: multiSendSelector,
+          operation: SafeOperation.DelegateCall,
+          policy: await multiSendPolicy.getAddress()
+        })
+      ]
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+
+      const nonce = await safe.nonce()
+
+      // The co-signer authorises exactly one transfer of `amount`.
+      const transfer: TransactionParametersWithNonce = buildSafeTransaction({
+        to: await recipient.getAddress(),
+        value: amount,
+        data: '0x',
+        nonce
+      })
+      const coSignature = await safeSignTypedData(cosigner, await safe.getAddress(), transfer)
+
+      // The batch presents that same transfer three times, replaying the one co-signature. Every
+      // occurrence derives the same hash, so each check would see a valid signature.
+      const txs = [transfer, transfer, transfer]
+      const multiSendTx = await buildMultiSendSafeTx(multiSend, txs, nonce)
+      const combinedContext = ethers.solidityPacked(
+        ['uint256', 'bytes', 'uint256', 'bytes', 'uint256', 'bytes'],
+        [
+          ethers.dataLength(coSignature.data),
+          coSignature.data,
+          ethers.dataLength(coSignature.data),
+          coSignature.data,
+          ethers.dataLength(coSignature.data),
+          coSignature.data
+        ]
+      )
+
+      const initialSafeBalance = await ethers.provider.getBalance(await safe.getAddress())
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await multiSend.getAddress(),
+          data: multiSendTx.data,
+          operation: SafeOperation.DelegateCall,
+          additionalData: combinedContext
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+
+      expect(await ethers.provider.getBalance(await safe.getAddress())).to.equal(initialSafeBalance)
+    })
+
+    it('Should record a co-signature as spent once used', async function () {
+      const { owner, cosigner, recipient, safePolicyGuard, safe, coSignerPolicy } = await loadFixture(fixture)
+
+      const amount = ethers.parseEther('1')
+      const configurations = [
+        createConfiguration({
+          target: await recipient.getAddress(),
+          policy: await coSignerPolicy.getAddress(),
+          data: encodeCoSignerConfig(await cosigner.getAddress())
+        })
+      ]
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+
+      const nonce = await safe.nonce()
+      const transfer: TransactionParametersWithNonce = buildSafeTransaction({
+        to: await recipient.getAddress(),
+        value: amount,
+        data: '0x',
+        nonce
+      })
+      const safeTxHash = await safe.getTransactionHash(
+        transfer.to!,
+        transfer.value!,
+        transfer.data!,
+        transfer.operation!,
+        transfer.safeTxGas!,
+        transfer.baseGas!,
+        transfer.gasPrice!,
+        transfer.gasToken!,
+        transfer.refundReceiver!,
+        nonce
+      )
+      const coSignature = await safeSignTypedData(cosigner, await safe.getAddress(), transfer)
+
+      expect(await coSignerPolicy.isCoSignatureSpent(safePolicyGuard, safe, safeTxHash)).to.equal(false)
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await recipient.getAddress(),
+        value: amount,
+        additionalData: coSignature.data
+      })
+
+      expect(await coSignerPolicy.isCoSignatureSpent(safePolicyGuard, safe, safeTxHash)).to.equal(true)
     })
   })
 })
