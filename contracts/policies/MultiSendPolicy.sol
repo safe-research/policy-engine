@@ -34,7 +34,7 @@ contract MultiSendPolicy is IPolicy {
         bytes calldata transactions = _decodeMultiSendTransactions(data);
         bytes calldata ctx;
         while (transactions.length > 0) {
-            (to, value, data, operation, transactions) = _decodeNextTransaction(transactions);
+            (to, value, data, operation, transactions) = _decodeNextTransaction(safe, transactions);
             (ctx, context) = _decodeNextContext(context);
             IPolicyEngine(msg.sender).checkTransaction(safe, to, value, data, operation, ctx);
         }
@@ -54,11 +54,20 @@ contract MultiSendPolicy is IPolicy {
         return data[:length];
     }
 
+    /**
+     * @dev Resolves a zero `to` to the Safe, as `MultiSend` itself does. The batch is always a
+     *      `DELEGATECALL` (pinned by {configure}), so its `address(this)` is the Safe; without this
+     *      the checked target and the executed one diverge.
+     */
     function _decodeNextTransaction(
+        address safe,
         bytes calldata transactions
     ) internal pure returns (address to, uint256 value, bytes calldata data, Operation operation, bytes calldata rest) {
         operation = Operation(uint8(transactions[0]));
         to = address(uint160(bytes20(transactions[1:21])));
+        if (to == address(0)) {
+            to = safe;
+        }
         value = uint256(bytes32(transactions[21:53]));
         uint256 dataLength = uint256(bytes32(transactions[53:85]));
         data = transactions[85:85 + dataLength];
