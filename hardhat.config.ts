@@ -40,9 +40,10 @@ const config: HardhatUserConfig = {
       {
         version: '0.8.30',
         settings: {
-          // Pinned explicitly: this is Hardhat's current default, but relying on the default would
-          // let a Hardhat upgrade silently change the deployed bytecode.
-          evmVersion: 'paris',
+          // Pinned explicitly rather than left to the Hardhat default, so a Hardhat upgrade cannot
+          // silently change the deployed bytecode. `cancun` is required by the vendored Safenet
+          // libraries, which use `mcopy`; it rules out chains that have not activated Cancun.
+          evmVersion: 'cancun',
           optimizer: {
             enabled: true,
             runs: 10_000_000

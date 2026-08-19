@@ -4,9 +4,9 @@ pragma solidity ^0.8.30;
 /**
  * @title SignatureExtension
  * @notice A reusable format for appending typed, variable-length data after a Safe's owner signatures.
- * @dev Vendored from `safe-research/safenet` at commit
- *      `1b3c9422600a03d69c4048a160d39b0e32401f28`, path
- *      `contracts/src/libraries/SignatureExtension.sol`. Keep the two in sync.
+ * @dev Vendored from `safe-research/safenet` at `5de7e86900b27844d00458d8dc85cbaa0d27f2ea`,
+ *      `contracts/src/libraries/SignatureExtension.sol`. The body is verbatim; only this note and
+ *      the licence header differ, which `npm run vendor:check` enforces.
  *
  *      A *signature extension* is a self-describing envelope appended to Safe's `signatures` bytes.
  *      Safe's own signature parser reads owner signatures front-to-back and ignores trailing bytes, so a
@@ -34,17 +34,29 @@ pragma solidity ^0.8.30;
  *      nesting is not supported (a future need would be a new format/version).
  */
 library SignatureExtension {
+    // ============================================================
+    // CONSTANTS
+    // ============================================================
+
     /**
      * @dev Fixed envelope overhead: the `uint256 payloadLength` word (32 bytes) plus the terminal
      *      `bytes32 typeHash` word (32 bytes).
      */
     uint256 private constant _ENVELOPE_OVERHEAD = 64;
 
+    // ============================================================
+    // ERRORS
+    // ============================================================
+
     /**
      * @notice Thrown when a blob carries the expected type hash but is not a well-formed envelope — too
      *         short to hold `[payloadLength][typeHash]`, or a payload length that runs past the front.
      */
     error MalformedSignatureExtension();
+
+    // ============================================================
+    // INTERNAL FUNCTIONS
+    // ============================================================
 
     /**
      * @notice Returns whether `signatures` carries an extension of type `typeHash` (ends with it).
