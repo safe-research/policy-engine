@@ -6,6 +6,17 @@ const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY
   : 3600n
 const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : false
 
+// `SafenetPolicy` binds a Consensus deployment and a genesis FROST group key at construction, none
+// of which have a sensible default -- getting them wrong produces a policy that can never be
+// satisfied. It is therefore deployed only when all five are supplied.
+const SAFENET = {
+  consensusChainId: process.env.SAFENET_CONSENSUS_CHAIN_ID,
+  consensusAddress: process.env.SAFENET_CONSENSUS_ADDRESS,
+  initialEpoch: process.env.SAFENET_INITIAL_EPOCH,
+  groupKeyX: process.env.SAFENET_GROUP_KEY_X,
+  groupKeyY: process.env.SAFENET_GROUP_KEY_Y
+}
+
 type Networks = Record<string, Record<string, string>>
 
 const deploy: DeployFunction = async function ({ run, getChainId, getNamedAccounts, deployments, network }) {
@@ -67,6 +78,17 @@ const deploy: DeployFunction = async function ({ run, getChainId, getNamedAccoun
   await deployContract('ERC20TransferPolicy')
   await deployContract('MultiSendPolicy')
   await deployContract('NativeTransferPolicy')
+
+  if (Object.values(SAFENET).every((value) => value !== undefined)) {
+    await deployContract('SafenetPolicy', [
+      BigInt(SAFENET.consensusChainId!),
+      SAFENET.consensusAddress!,
+      BigInt(SAFENET.initialEpoch!),
+      { x: BigInt(SAFENET.groupKeyX!), y: BigInt(SAFENET.groupKeyY!) }
+    ])
+  } else {
+    console.warn('Skipping SafenetPolicy: SAFENET_* environment variables are not set')
+  }
 
   // Record the deployments
   if (network.name !== 'hardhat') {
