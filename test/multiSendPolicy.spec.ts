@@ -6,6 +6,7 @@ import { ethers } from 'hardhat'
 import {
   createConfiguration,
   createSafe,
+  enableGuard,
   encodeCoSignerConfig,
   execTransaction,
   safeSignTypedData,
@@ -239,20 +240,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the policies for all transactions
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard, configurations: configurations })
 
       // Build MultiSend transaction
       const safeTx = await buildMultiSendSafeTx(multiSend, txs, await safe.nonce())
@@ -312,20 +300,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the policies for all transactions
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard, configurations: configurations })
 
       // Build MultiSend transaction with an unconfigured transaction
       const txs = [
@@ -361,28 +336,20 @@ describe('MultiSendPolicy', function () {
       const subTarget = randomAddress()
       const amount = ethers.parseEther('1')
 
-      await execTransaction({
-        owners: [owner],
+      await enableGuard({
+        owner,
         safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-          [
-            createConfiguration({ target: recipient.address, policy: await allowPolicy.getAddress() }),
-            createConfiguration({ target: subTarget, policy: await mockPolicy.getAddress() }),
-            createConfiguration({
-              target: await multiSend.getAddress(),
-              selector: multiSend.interface.getFunction('multiSend')?.selector,
-              operation: SafeOperation.DelegateCall,
-              policy: await multiSendPolicy.getAddress()
-            })
-          ]
-        ])
-      })
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({ target: recipient.address, policy: await allowPolicy.getAddress() }),
+          createConfiguration({ target: subTarget, policy: await mockPolicy.getAddress() }),
+          createConfiguration({
+            target: await multiSend.getAddress(),
+            selector: multiSend.interface.getFunction('multiSend')?.selector,
+            operation: SafeOperation.DelegateCall,
+            policy: await multiSendPolicy.getAddress()
+          })
+        ]
       })
 
       await mockPolicy.setRevertCheckWithReason(true)
@@ -432,20 +399,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the multiSend policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [multiSendConfiguration])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard, configurations: multiSendConfiguration })
 
       const configurationCall = [
         createConfiguration({
@@ -559,20 +513,7 @@ describe('MultiSendPolicy', function () {
       ]
 
       // Configure the policies for all transactions
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      await enableGuard({ owner, safe, safePolicyGuard, configurations: configurations })
 
       // Get initial balances
       const initialRecipientBalance = await ethers.provider.getBalance(await recipient.getAddress())
