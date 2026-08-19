@@ -3,6 +3,7 @@ pragma solidity =0.8.28;
 
 import {IERC20} from "../interfaces/IERC20.sol";
 import {IPolicy, Operation} from "../interfaces/IPolicy.sol";
+import {Permission} from "../interfaces/Permission.sol";
 import {AccessSelector} from "../libraries/AccessSelector.sol";
 
 /**
@@ -10,6 +11,8 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
  * @dev Allow ERC-20 transfers only to a specific address list.
  * @dev `transferFrom`'s `from` argument is deliberately unconstrained: the policy restricts where
  *      tokens may go, not whose tokens they are.
+ * @dev A recipient may be allowed indefinitely or once; a {Permission.ONCE} grant is spent by
+ *      the transfer that uses it.
  */
 contract ERC20TransferPolicy is IPolicy {
     using AccessSelector for AccessSelector.T;
@@ -17,18 +20,18 @@ contract ERC20TransferPolicy is IPolicy {
     /**
      * @notice Recipient data structure.
      * @param recipient The recipient address.
-     * @param allowed Whether the recipient is allowed to receive tokens.
+     * @param permission How often the recipient may receive tokens.
      */
     struct RecipientData {
         address recipient;
-        bool allowed;
+        Permission permission;
     }
 
     /**
      * @dev Mapping of recipients for each Safe and token.
      */
     // solhint-disable-next-line private-vars-leading-underscore
-    mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address recipient => bool))))
+    mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address recipient => Permission))))
         private $recipients;
 
     /**
@@ -60,10 +63,14 @@ contract ERC20TransferPolicy is IPolicy {
         address,
         bytes calldata,
         AccessSelector.T
-    ) external view override returns (bytes4 magicValue) {
+    ) external override returns (bytes4 magicValue) {
         address token = to;
         address recipient = _decodeERC20Transfer(data);
-        require($recipients[msg.sender][safe][token][recipient], Unauthorized());
+        Permission permission = $recipients[msg.sender][safe][token][recipient];
+        require(permission != Permission.NONE, Unauthorized());
+        if (permission == Permission.ONCE) {
+            delete $recipients[msg.sender][safe][token][recipient];
+        }
         return IPolicy.checkTransaction.selector;
     }
 
@@ -96,25 +103,25 @@ contract ERC20TransferPolicy is IPolicy {
         RecipientData[] memory recipientList = abi.decode(data, (RecipientData[]));
         for (uint256 i = 0; i < recipientList.length; i++) {
             // solhint-disable-next-line reentrancy
-            $recipients[msg.sender][safe][target][recipientList[i].recipient] = recipientList[i].allowed;
+            $recipients[msg.sender][safe][target][recipientList[i].recipient] = recipientList[i].permission;
         }
         return true;
     }
 
     /**
-     * @notice Check if a recipient is allowed for a specific Safe and token.
+     * @notice Get the permission recorded for a recipient on a specific Safe and token.
      * @param policyGuard The policy guard address.
      * @param safe The Safe address.
      * @param token The token address.
      * @param recipient The recipient address.
-     * @return bool Whether the recipient is allowed.
+     * @return permission How often the recipient may still receive tokens.
      */
-    function isRecipientAllowed(
+    function getRecipientPermission(
         address policyGuard,
         address safe,
         address token,
         address recipient
-    ) external view returns (bool) {
-        return $recipients[policyGuard][safe][token][recipient];
+    ) external view returns (Permission permission) {
+        permission = $recipients[policyGuard][safe][token][recipient];
     }
 }

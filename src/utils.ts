@@ -125,18 +125,27 @@ export function encodeOneTimeGrantConfig(granted = true): string {
 }
 
 /**
+ * How often an allowlisted account may be used, mirroring the `Permission` enum in Solidity.
+ */
+export enum Permission {
+  None = 0,
+  Once = 1,
+  Always = 2
+}
+
+/**
  * Encodes `ERC20ApprovePolicy` and `ERC20TransferPolicy` configuration data.
  * @param accounts The accounts to grant or revoke -- spenders for `ERC20ApprovePolicy`, recipients
  *        for `ERC20TransferPolicy`. An empty list configures the access selector without allowing
  *        anyone.
- * @param allowed Whether the accounts are allowed; pass `false` to revoke.
- * @dev Both policies take an `(address, bool)` array (`SpenderData` and `RecipientData`), so one
- *      encoder serves both.
+ * @param permission How often the accounts may be used; pass {Permission.None} to revoke.
+ * @dev Both policies take an `(address, Permission)` array (`SpenderData` and `RecipientData`), so
+ *      one encoder serves both.
  */
-export function encodeAllowlistConfig(accounts: string[], allowed = true): string {
+export function encodeAllowlistConfig(accounts: string[], permission = Permission.Always): string {
   return ethers.AbiCoder.defaultAbiCoder().encode(
-    ['tuple(address account, bool allowed)[]'],
-    [accounts.map((account) => ({ account, allowed }))]
+    ['tuple(address account, uint8 permission)[]'],
+    [accounts.map((account) => ({ account, permission }))]
   )
 }
 
