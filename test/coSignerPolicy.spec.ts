@@ -6,6 +6,7 @@ import { ethers } from 'hardhat'
 import {
   createConfiguration,
   createSafe,
+  encodeCoSignerConfig,
   execTransaction,
   safeSignTypedData,
   TransactionParametersWithNonce
@@ -60,7 +61,7 @@ describe('CoSignerPolicy', function () {
         createConfiguration({
           target: await recipient.getAddress(),
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await cosigner.getAddress()])
+          data: encodeCoSignerConfig(await cosigner.getAddress())
         })
       ]
 
@@ -129,7 +130,7 @@ describe('CoSignerPolicy', function () {
           target: await recipient.getAddress(),
           selector: '0x00000000',
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await cosigner.getAddress()])
+          data: encodeCoSignerConfig(await cosigner.getAddress())
         })
       ]
 
@@ -174,7 +175,7 @@ describe('CoSignerPolicy', function () {
           target: await recipient.getAddress(),
           selector: '0x00000000',
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await cosigner.getAddress()])
+          data: encodeCoSignerConfig(await cosigner.getAddress())
         })
       ]
 
@@ -235,12 +236,12 @@ describe('CoSignerPolicy', function () {
         createConfiguration({
           target: await recipient.getAddress(),
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await cosigner.getAddress()])
+          data: encodeCoSignerConfig(await cosigner.getAddress())
         }),
         createConfiguration({
           target: await other.getAddress(),
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await other.getAddress()])
+          data: encodeCoSignerConfig(await other.getAddress())
         })
       ]
 

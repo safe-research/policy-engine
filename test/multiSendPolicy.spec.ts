@@ -6,6 +6,7 @@ import { ethers } from 'hardhat'
 import {
   createConfiguration,
   createSafe,
+  encodeCoSignerConfig,
   execTransaction,
   safeSignTypedData,
   randomAddress,
@@ -514,20 +515,20 @@ describe('MultiSendPolicy', function () {
         createConfiguration({
           target: await recipient.getAddress(),
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await cosigner.getAddress()])
+          data: encodeCoSignerConfig(await cosigner.getAddress())
         }),
         // Configure policy for ETH transfer to other with other as cosigner
         createConfiguration({
           target: await other.getAddress(),
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await other.getAddress()])
+          data: encodeCoSignerConfig(await other.getAddress())
         }),
         // Configure policy for ERC20 transfer with cosigner
         createConfiguration({
           target: await token.getAddress(),
           selector: transferSelector,
           policy: await coSignerPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address'], [await cosigner.getAddress()])
+          data: encodeCoSignerConfig(await cosigner.getAddress())
         }),
         // Configure policy for MultiSend
         createConfiguration({
