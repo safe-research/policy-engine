@@ -66,24 +66,29 @@ describe('SafePolicyGuard', function () {
   })
 
   describe('supportsInterface', function () {
-    it('Should support the PolicyEngine interface', async function () {
+    // Pinned as literals rather than recomputed from the ABI: these IDs are part of the deployed
+    // surface, and deriving them here would let a signature change go unnoticed.
+    const INTERFACE_IDS = {
+      PolicyEngine: '0x04a9e3cd',
+      SafeModuleGuard: '0x58401ed8',
+      SafeTransactionGuard: '0xe6d7a83a',
+      ERC165: '0x01ffc9a7'
+    }
+
+    it('Should support the declared interfaces', async function () {
       const { safePolicyGuard } = await loadFixture(fixture)
-      expect(await safePolicyGuard.supportsInterface('0x04a9e3cd')).to.equal(true)
+
+      for (const [name, id] of Object.entries(INTERFACE_IDS)) {
+        expect(await safePolicyGuard.supportsInterface(id), name).to.equal(true)
+      }
     })
 
-    it('Should support the SafeModuleGuard interface', async function () {
+    it('Should not claim support for an unknown interface', async function () {
+      // Without this, the assertions above would pass just as well against a `supportsInterface`
+      // that returned true unconditionally. `0xffffffff` is the ID ERC-165 requires to be false.
       const { safePolicyGuard } = await loadFixture(fixture)
-      expect(await safePolicyGuard.supportsInterface('0x58401ed8')).to.equal(true)
-    })
 
-    it('Should support the SafeTransactionGuard interface', async function () {
-      const { safePolicyGuard } = await loadFixture(fixture)
-      expect(await safePolicyGuard.supportsInterface('0xe6d7a83a')).to.equal(true)
-    })
-
-    it('Should support the ERC165 interface', async function () {
-      const { safePolicyGuard } = await loadFixture(fixture)
-      expect(await safePolicyGuard.supportsInterface('0x01ffc9a7')).to.equal(true)
+      expect(await safePolicyGuard.supportsInterface('0xffffffff')).to.equal(false)
     })
   })
 
