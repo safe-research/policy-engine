@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.30;
 
 /**
  * @title SignatureExtension
  * @notice A reusable format for appending typed, variable-length data after a Safe's owner signatures.
  * @dev Vendored from `safe-research/safenet` at commit
  *      `1b3c9422600a03d69c4048a160d39b0e32401f28`, path
- *      `contracts/src/libraries/SignatureExtension.sol`. Only the pragma differs, relaxed from
- *      `^0.8.30` so it compiles with this package's pinned `0.8.28`. Keep the two in sync.
+ *      `contracts/src/libraries/SignatureExtension.sol`. Keep the two in sync.
  *
  *      A *signature extension* is a self-describing envelope appended to Safe's `signatures` bytes.
  *      Safe's own signature parser reads owner signatures front-to-back and ignores trailing bytes, so a
