@@ -3,7 +3,14 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, randomAddress, SafeOperation } from '../src/utils'
+import {
+  createConfiguration,
+  createSafe,
+  encodeAllowlistConfig,
+  execTransaction,
+  randomAddress,
+  SafeOperation
+} from '../src/utils'
 import { deploySafeContracts, deploySafePolicyGuard, deployERC20TransferPolicy, deployTestERC20Token } from './deploy'
 
 describe('ERC20TransferPolicy', function () {
@@ -56,19 +63,12 @@ describe('ERC20TransferPolicy', function () {
       const amount = ethers.parseEther('100')
 
       // Configure the ERC20 transfer policy
-      const recipientData = [
-        {
-          recipient: await recipient.getAddress(),
-          allowed: true
-        }
-      ]
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('transfer').selector,
           policy: await erc20TransferPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address recipient, bool allowed)[]'], [recipientData])
+          data: encodeAllowlistConfig([await recipient.getAddress()])
         })
       ]
 
@@ -106,14 +106,12 @@ describe('ERC20TransferPolicy', function () {
       const amount = ethers.parseEther('100')
 
       // Configure the ERC20 transfer policy with no recipients
-      const recipientData: { recipient: string; allowed: boolean }[] = []
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('transfer').selector,
           policy: await erc20TransferPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address recipient, bool allowed)[]'], [recipientData])
+          data: encodeAllowlistConfig([])
         })
       ]
 
@@ -155,19 +153,12 @@ describe('ERC20TransferPolicy', function () {
       const amount = ethers.parseEther('100')
 
       // Configure the ERC20 transfer policy
-      const recipientData = [
-        {
-          recipient: await recipient.getAddress(),
-          allowed: true
-        }
-      ]
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('transfer').selector,
           policy: await erc20TransferPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address recipient, bool allowed)[]'], [recipientData])
+          data: encodeAllowlistConfig([await recipient.getAddress()])
         })
       ]
 
@@ -207,19 +198,12 @@ describe('ERC20TransferPolicy', function () {
       await token.mint(await owner.getAddress(), amount)
 
       // Configure the ERC20 transfer policy
-      const recipientData = [
-        {
-          recipient: await recipient.getAddress(),
-          allowed: true
-        }
-      ]
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('transferFrom').selector,
           policy: await erc20TransferPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address recipient, bool allowed)[]'], [recipientData])
+          data: encodeAllowlistConfig([await recipient.getAddress()])
         })
       ]
 
@@ -263,21 +247,13 @@ describe('ERC20TransferPolicy', function () {
     it('Should only be able to configure ERC20 transfer transactions', async function () {
       const { owner, safePolicyGuard, safe, erc20TransferPolicy, token } = await loadFixture(fixture)
 
-      // Configure the ERC20 transfer policy
-      const recipientData = [
-        {
-          recipient: randomAddress(),
-          allowed: true
-        }
-      ]
-
       // Trying to configure a non-transfer transaction
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('approve').selector, // Non-transfer function
           policy: await erc20TransferPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address recipient, bool allowed)[]'], [recipientData])
+          data: encodeAllowlistConfig([randomAddress()])
         })
       ]
 
@@ -295,14 +271,6 @@ describe('ERC20TransferPolicy', function () {
     it('Should only allow CALL operations', async function () {
       const { owner, safePolicyGuard, safe, erc20TransferPolicy, token } = await loadFixture(fixture)
 
-      // Configure the ERC20 transfer policy
-      const recipientData = [
-        {
-          recipient: randomAddress(),
-          allowed: true
-        }
-      ]
-
       // Trying to configure with DELEGATECALL operation
       const configurations = [
         createConfiguration({
@@ -310,7 +278,7 @@ describe('ERC20TransferPolicy', function () {
           selector: token.interface.getFunction('transfer').selector,
           operation: SafeOperation.DelegateCall,
           policy: await erc20TransferPolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address recipient, bool allowed)[]'], [recipientData])
+          data: encodeAllowlistConfig([randomAddress()])
         })
       ]
 
@@ -337,12 +305,7 @@ describe('ERC20TransferPolicy', function () {
       )
 
       // Configure with empty recipient list
-      const emptyRecipientData = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(address recipient, bool allowed)[]'],
-        [[]]
-      )
-
-      await expect(erc20TransferPolicy.configure(ZeroAddress, access, emptyRecipientData)).to.not.be.reverted
+      await expect(erc20TransferPolicy.configure(ZeroAddress, access, encodeAllowlistConfig([]))).to.not.be.reverted
     })
 
     it('Should handle recipient permission toggle', async function () {
@@ -358,36 +321,13 @@ describe('ERC20TransferPolicy', function () {
       )
 
       // First, allow the recipient
-      const allowRecipientData = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(address recipient, bool allowed)[]'],
-        [
-          [
-            {
-              recipient: recipientAddress,
-              allowed: true
-            }
-          ]
-        ]
-      )
-
-      await erc20TransferPolicy.configure(ZeroAddress, access, allowRecipientData)
+      await erc20TransferPolicy.configure(ZeroAddress, access, encodeAllowlistConfig([recipientAddress]))
       expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
         .true
 
       // Then, disallow the same recipient
-      const disallowRecipientData = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(address recipient, bool allowed)[]'],
-        [
-          [
-            {
-              recipient: recipientAddress,
-              allowed: false
-            }
-          ]
-        ]
-      )
-
-      await expect(erc20TransferPolicy.configure(ZeroAddress, access, disallowRecipientData)).to.not.be.reverted
+      await expect(erc20TransferPolicy.configure(ZeroAddress, access, encodeAllowlistConfig([recipientAddress], false)))
+        .to.not.be.reverted
       expect(await erc20TransferPolicy.isRecipientAllowed(deployer, ZeroAddress, tokenAddress, recipientAddress)).to.be
         .false
     })
