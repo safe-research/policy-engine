@@ -117,6 +117,14 @@ export function encodeCoSignerConfig(cosigner: string): string {
 }
 
 /**
+ * Encodes `OneTimeAllowPolicy` configuration data.
+ * @param granted Whether to grant the single use; pass `false` to revoke an unspent grant.
+ */
+export function encodeOneTimeGrantConfig(granted = true): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(['bool'], [granted])
+}
+
+/**
  * Encodes `ERC20ApprovePolicy` and `ERC20TransferPolicy` configuration data.
  * @param accounts The accounts to grant or revoke -- spenders for `ERC20ApprovePolicy`, recipients
  *        for `ERC20TransferPolicy`. An empty list configures the access selector without allowing
