@@ -8,7 +8,7 @@
     "immutable-vars-naming": ["error", { "immutablesAsConstants": true }],
     "gas-custom-errors": "warn",
     "no-unused-import": "error",
-    "compiler-version": ["error", "0.8.28"],
+    "compiler-version": ["error", "0.8.30"],
     "func-visibility": ["warn", { "ignoreConstructors": true }]
   }
 }
