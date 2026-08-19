@@ -36,14 +36,14 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     const { safePolicyGuard } = await deploySafePolicyGuard()
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safeA = await createSafe({
-      owner: ownerA,
+      owners: [ownerA],
       guard: ZeroAddress,
       saltNonce: BigInt(0xa1),
       safeProxyFactory,
       singleton: safeSingleton
     })
     const safeB = await createSafe({
-      owner: ownerB,
+      owners: [ownerB],
       guard: ZeroAddress,
       saltNonce: BigInt(0xb2),
       safeProxyFactory,
@@ -59,7 +59,7 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     const x = await deployReentrantPolicy()
     await x.setMode(Mode.ReenterGuardEntry)
     await enableGuard({
-      owner: ownerA,
+      owners: [ownerA],
       safe: safeA,
       safePolicyGuard,
       configurations: [createConfiguration({ policy: await x.getAddress() })]
@@ -92,7 +92,7 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     await policyX.setMode(Mode.ReenterEngine)
     await policyX.setReenter(await safeB.getAddress(), randomAddress())
     await enableGuard({
-      owner: ownerA,
+      owners: [ownerA],
       safe: safeA,
       safePolicyGuard,
       configurations: [createConfiguration({ policy: await policyX.getAddress() })]
@@ -124,7 +124,7 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     await policyX.setReenter(await safeA.getAddress(), targetZ)
 
     await enableGuard({
-      owner: ownerA,
+      owners: [ownerA],
       safe: safeA,
       safePolicyGuard,
       configurations: [
@@ -147,7 +147,7 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     const policy = await deployReentrantPolicy()
     await policy.setMode(Mode.WriteState)
     await enableGuard({
-      owner: ownerA,
+      owners: [ownerA],
       safe: safeA,
       safePolicyGuard,
       configurations: [createConfiguration({ policy: await policy.getAddress() })]
@@ -165,7 +165,7 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
     const policy = await deployReentrantPolicy()
     await policy.setMode(Mode.ReenterModuleGuardEntry)
     await enableGuard({
-      owner: ownerA,
+      owners: [ownerA],
       safe: safeA,
       safePolicyGuard,
       configurations: [createConfiguration({ policy: await policy.getAddress() })]
@@ -213,13 +213,13 @@ describe('Non-view check path — reentrancy & Safe confinement', function () {
 
     const innerTarget = randomAddress()
     await enableGuard({
-      owner: ownerB,
+      owners: [ownerB],
       safe: safeB,
       safePolicyGuard,
       configurations: [createConfiguration({ target: innerTarget, policy: await allowPolicy.getAddress() })]
     })
     await enableGuard({
-      owner: ownerA,
+      owners: [ownerA],
       safe: safeA,
       safePolicyGuard,
       configurations: [

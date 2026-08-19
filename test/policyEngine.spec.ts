@@ -21,7 +21,7 @@ describe('PolicyEngine Edge Cases', function () {
     const { safePolicyGuard } = await deploySafePolicyGuard()
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress,
       saltNonce: BigInt(0x9),
       safeProxyFactory,
@@ -229,7 +229,7 @@ describe('PolicyEngine Edge Cases', function () {
       // a success can only mean the exact match was selected.
       await mockPolicy.setRevertTransaction(true)
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -252,7 +252,7 @@ describe('PolicyEngine Edge Cases', function () {
 
       // The operation is part of the access selector, so the two fallbacks are separate keys.
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -273,7 +273,7 @@ describe('PolicyEngine Edge Cases', function () {
       const target = randomAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ target, policy: await mockPolicy.getAddress() })]

@@ -31,7 +31,7 @@ describe('[@bench] Policies', () => {
     const { safeProxyFactory, safe: safeSingleton, compatibilityFallbackHandler } = await deploySafeContracts()
 
     const safeProxy = await createSafe({
-      owner: alice,
+      owners: [alice],
       saltNonce: 0n,
       fallbackHandler: await compatibilityFallbackHandler.getAddress(),
       safeProxyFactory,
@@ -39,7 +39,7 @@ describe('[@bench] Policies', () => {
     })
 
     const safeProxyCosigner = await createSafe({
-      owner: bob,
+      owners: [bob],
       saltNonce: 0n,
       fallbackHandler: await compatibilityFallbackHandler.getAddress(),
       safeProxyFactory,

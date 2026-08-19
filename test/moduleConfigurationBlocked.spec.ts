@@ -26,7 +26,7 @@ describe('Module policy-change blocking', function () {
     const { safePolicyGuard } = await deploySafePolicyGuard()
     const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress,
       saltNonce: BigInt(0x73),
       safeProxyFactory,
@@ -52,7 +52,7 @@ describe('Module policy-change blocking', function () {
       // `enableGuard` installs the module guard before the transaction guard, which matters here:
       // once the transaction guard is live, `setModuleGuard` is itself a guarded self-call needing
       // a configured policy, which this fixture does not install.
-      await enableGuard({ owner, safe, safePolicyGuard, configurations: cfgs, moduleGuard: true })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations: cfgs, moduleGuard: true })
     }
 
     /** A root the owners have requested and matured, ready to apply. */

@@ -209,7 +209,7 @@ describe('SafePolicyGuard -- immediate configuration', function () {
       ]
 
       // Enable the guard on safe
-      await enableGuard({ owner, safe, safePolicyGuard })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
 
       // Call the configure immediately function on safe using execTransaction helper function
       await expect(
@@ -231,7 +231,7 @@ describe('SafePolicyGuard -- immediate configuration', function () {
       const guardAddress = await safePolicyGuard.getAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ policy: await mockPolicy.getAddress() })]
@@ -281,7 +281,7 @@ describe('SafePolicyGuard -- immediate configuration', function () {
 
       // Allow `setGuard` so the guard can be removed, then enable the guard.
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [

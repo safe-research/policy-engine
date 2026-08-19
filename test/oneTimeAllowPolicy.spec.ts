@@ -26,7 +26,7 @@ describe('OneTimeAllowPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0xc),
       safeProxyFactory,
@@ -66,7 +66,7 @@ describe('OneTimeAllowPolicy', function () {
       const value = ethers.parseEther('1')
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -97,7 +97,7 @@ describe('OneTimeAllowPolicy', function () {
       const other = randomAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -128,7 +128,7 @@ describe('OneTimeAllowPolicy', function () {
       const multiSendSelector = multiSend.interface.getFunction('multiSend')?.selector
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -174,7 +174,7 @@ describe('OneTimeAllowPolicy', function () {
       expect(await oneTimeAllowPolicy.isGranted(safePolicyGuard, safe, access)).to.equal(false)
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
