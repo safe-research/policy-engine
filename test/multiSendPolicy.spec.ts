@@ -26,6 +26,7 @@ import {
   deployTestERC20Token,
   deployCoSignerPolicy,
   deployAllowPolicy,
+  deployDenyPolicy,
   deployMockPolicy
 } from './deploy'
 
@@ -55,6 +56,9 @@ describe('MultiSendPolicy', function () {
     // Deploy AllowPolicy contract
     const { allowPolicy } = await deployAllowPolicy()
 
+    // Deploy DenyPolicy contract
+    const { denyPolicy } = await deployDenyPolicy()
+
     // Deploy Test ERC20 Token contract
     const { token } = await deployTestERC20Token()
 
@@ -78,6 +82,7 @@ describe('MultiSendPolicy', function () {
       multiSend,
       coSignerPolicy,
       allowPolicy,
+      denyPolicy,
       token
     }
   }
@@ -585,6 +590,104 @@ describe('MultiSendPolicy', function () {
       expect(finalOtherBalance - initialOtherBalance).to.equal(ethAmount)
       expect(finalRecipientTokenBalance - initialRecipientTokenBalance).to.equal(tokenAmount)
       expect(initialSafeBalance - finalSafeBalance).to.equal(ethAmount * 2n)
+    })
+  })
+  describe('Zero Target Resolution', function () {
+    // `MultiSend` replaces a zero `to` with `address(this)`, which is the Safe because the batch is
+    // delegatecalled. The policy has to resolve it the same way, or the checked target and the
+    // called one diverge.
+    it('Should route a zero target to the Safe rather than to address(0)', async function () {
+      const { owner, safePolicyGuard, safe, multiSendPolicy, multiSend, allowPolicy, other } =
+        await loadFixture(fixture)
+
+      const multiSendSelector = multiSend.interface.getFunction('multiSend')?.selector
+      const addOwnerSelector = safe.interface.getFunction('addOwnerWithThreshold')?.selector
+
+      // The Safe allows exactly one self-administration call, addressed to itself.
+      const configurations = [
+        createConfiguration({
+          target: await safe.getAddress(),
+          selector: addOwnerSelector,
+          policy: await allowPolicy.getAddress()
+        }),
+        createConfiguration({
+          target: await multiSend.getAddress(),
+          selector: multiSendSelector,
+          operation: SafeOperation.DelegateCall,
+          policy: await multiSendPolicy.getAddress()
+        })
+      ]
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+
+      const txs = [
+        buildSafeTransaction({
+          to: ZeroAddress,
+          data: safe.interface.encodeFunctionData('addOwnerWithThreshold', [other.address, 1]),
+          nonce: 0
+        })
+      ]
+      const safeTx = await buildMultiSendSafeTx(multiSend, txs, await safe.nonce())
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await multiSend.getAddress(),
+        data: safeTx.data,
+        operation: SafeOperation.DelegateCall
+      })
+
+      expect(await safe.isOwner(other.address)).to.equal(true)
+    })
+
+    it('Should not let a zero target bypass a policy configured for the Safe', async function () {
+      const { owner, safePolicyGuard, safe, multiSendPolicy, multiSend, allowPolicy, denyPolicy, other } =
+        await loadFixture(fixture)
+
+      const multiSendSelector = multiSend.interface.getFunction('multiSend')?.selector
+      const addOwnerSelector = safe.interface.getFunction('addOwnerWithThreshold')?.selector
+
+      // Self-administration is explicitly denied, while everything else reachable by `CALL` is
+      // permitted through the fallback. Without the zero-target resolution the sub-transaction is
+      // looked up against `address(0)`, misses, and lands on that permissive fallback instead of
+      // the deny -- executing a self-call to the Safe that the Safe forbade.
+      const configurations = [
+        createConfiguration({
+          target: await safe.getAddress(),
+          selector: addOwnerSelector,
+          policy: await denyPolicy.getAddress()
+        }),
+        createConfiguration({
+          policy: await allowPolicy.getAddress() // CALL fallback
+        }),
+        createConfiguration({
+          target: await multiSend.getAddress(),
+          selector: multiSendSelector,
+          operation: SafeOperation.DelegateCall,
+          policy: await multiSendPolicy.getAddress()
+        })
+      ]
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+
+      const txs = [
+        buildSafeTransaction({
+          to: ZeroAddress,
+          data: safe.interface.encodeFunctionData('addOwnerWithThreshold', [other.address, 1]),
+          nonce: 0
+        })
+      ]
+      const safeTx = await buildMultiSendSafeTx(multiSend, txs, await safe.nonce())
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await multiSend.getAddress(),
+          data: safeTx.data,
+          operation: SafeOperation.DelegateCall
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+
+      expect(await safe.isOwner(other.address)).to.equal(false)
     })
   })
 })
