@@ -107,6 +107,14 @@ export function encodeModuleConfig(module: AddressLike, allowed = true): string 
 }
 
 /**
+ * Encodes `CoSignerPolicy` configuration data.
+ * @param cosigner The co-signer whose signature the policy will require for the access selector.
+ */
+export function encodeCoSignerConfig(cosigner: AddressLike): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(['address'], [cosigner])
+}
+
+/**
  * Appends a `SignatureExtension` envelope carrying `payload` to a Safe `signatures` blob.
  * @param signatures The owner signatures.
  * @param payload The policy context to carry in the tail.
