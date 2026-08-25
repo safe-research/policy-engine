@@ -3,6 +3,7 @@ pragma solidity =0.8.28;
 
 import {IERC20} from "../interfaces/IERC20.sol";
 import {IPolicy, Operation} from "../interfaces/IPolicy.sol";
+import {Permission} from "../interfaces/Permission.sol";
 import {AccessSelector} from "../libraries/AccessSelector.sol";
 
 /**
@@ -10,6 +11,8 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
  * @dev Allow ERC-20 approvals only for specific spender addresses.
  * @dev `approve(spender, 0)` is permitted for any spender, so revoking never depends on the
  *      allowlist. Any spender's allowance can therefore be zeroed regardless of configuration.
+ * @dev A spender may be allowed indefinitely or once; a {Permission.ONCE} grant is spent by the
+ *      approval that uses it. A zero-amount approval bypasses the allowlist, so it spends nothing.
  */
 contract ERC20ApprovePolicy is IPolicy {
     using AccessSelector for AccessSelector.T;
@@ -17,18 +20,18 @@ contract ERC20ApprovePolicy is IPolicy {
     /**
      * @notice Spender data structure.
      * @param spender The spender address.
-     * @param allowed Whether the spender is allowed to be approved.
+     * @param permission How often the spender may be approved.
      */
     struct SpenderData {
         address spender;
-        bool allowed;
+        Permission permission;
     }
 
     /**
      * @dev Mapping of spenders for each Safe and token.
      */
     // solhint-disable-next-line private-vars-leading-underscore
-    mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address spender => bool))))
+    mapping(address policyGuard => mapping(address safe => mapping(address token => mapping(address spender => Permission))))
         private $spenders;
 
     /**
@@ -60,10 +63,17 @@ contract ERC20ApprovePolicy is IPolicy {
         address,
         bytes calldata,
         AccessSelector.T
-    ) external view override returns (bytes4 magicValue) {
+    ) external override returns (bytes4 magicValue) {
         address token = to;
         (address spender, uint256 amount) = _decodeERC20Approve(data);
-        require(amount == 0 || $spenders[msg.sender][safe][token][spender], Unauthorized());
+        // Revoking an allowance is always permitted, and leaves any grant untouched.
+        if (amount != 0) {
+            Permission permission = $spenders[msg.sender][safe][token][spender];
+            require(permission != Permission.NONE, Unauthorized());
+            if (permission == Permission.ONCE) {
+                delete $spenders[msg.sender][safe][token][spender];
+            }
+        }
         return IPolicy.checkTransaction.selector;
     }
 
@@ -92,25 +102,25 @@ contract ERC20ApprovePolicy is IPolicy {
         require(operation == Operation.CALL, InvalidOperation());
         SpenderData[] memory spenderList = abi.decode(data, (SpenderData[]));
         for (uint256 i = 0; i < spenderList.length; i++) {
-            $spenders[msg.sender][safe][target][spenderList[i].spender] = spenderList[i].allowed;
+            $spenders[msg.sender][safe][target][spenderList[i].spender] = spenderList[i].permission;
         }
         return true;
     }
 
     /**
-     * @notice Check if a spender is allowed for a specific Safe and token.
+     * @notice Get the permission recorded for a spender on a specific Safe and token.
      * @param policyGuard The address of the policy guard.
      * @param safe The Safe address.
      * @param token The token address.
      * @param spender The spender address.
-     * @return bool True if the spender is allowed, false otherwise.
+     * @return permission How often the spender may still be approved.
      */
-    function isSpenderAllowed(
+    function getSpenderPermission(
         address policyGuard,
         address safe,
         address token,
         address spender
-    ) external view returns (bool) {
-        return $spenders[policyGuard][safe][token][spender];
+    ) external view returns (Permission permission) {
+        permission = $spenders[policyGuard][safe][token][spender];
     }
 }
