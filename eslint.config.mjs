@@ -53,5 +53,12 @@ export default [
       '@typescript-eslint/no-shadow': 'off'
     }
   },
+  {
+    // `solidity-coverage` loads `.solcover.js` with `require`, so it has to stay CommonJS.
+    files: ['.solcover.js'],
+    languageOptions: {
+      sourceType: 'commonjs'
+    }
+  },
   { ignores: ['**/node_modules', '**/.data'] }
 ]
