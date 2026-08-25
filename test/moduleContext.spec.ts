@@ -1,6 +1,6 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
-import { ZeroAddress } from 'ethers'
+import { Signer, ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
 import {
@@ -9,11 +9,14 @@ import {
   buildSafeTransaction,
   createConfiguration,
   createSafe,
+  enableGuard,
+  encodeModuleConfig,
   encodeMultiSend,
   execTransaction,
   randomAddress,
   safeSignTypedData
 } from '../src/utils'
+import { Safe, SafePolicyGuard } from '../typechain-types'
 import { deployAllowedModulePolicy, deployMultiSendPolicy, deploySafeContracts, deploySafePolicyGuard } from './deploy'
 
 /**
@@ -57,49 +60,24 @@ describe('Authenticated module parameter', function () {
   }
 
   /**
-   * Configures `AllowedModulePolicy` as the CALL fallback for `safe` (so it is reached by owner
-   * transactions as well as module ones), enables the module, then installs both guards.
+   * Builds the `AllowedModulePolicy` CALL-fallback configuration -- the part `enableGuard` does not
+   * cover -- so the policy is reached by owner transactions as well as module ones, then hands the
+   * module and both guards to `enableGuard`.
    */
   async function hardenWithModuleFallback(
-    owner: any,
-    safe: any,
-    safePolicyGuard: any,
+    owner: Signer,
+    safe: Safe,
+    safePolicyGuard: SafePolicyGuard,
     policyAddress: string,
     moduleAddress: string
   ) {
-    const guardAddress = await safePolicyGuard.getAddress()
-    const safeAddress = await safe.getAddress()
-
-    await execTransaction({
-      owners: [owner],
+    await enableGuard({
+      owner,
       safe,
-      to: guardAddress,
-      data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [
-        [
-          createConfiguration({
-            policy: policyAddress,
-            data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
-          })
-        ]
-      ])
-    })
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: safeAddress,
-      data: safe.interface.encodeFunctionData('enableModule', [moduleAddress])
-    })
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: safeAddress,
-      data: safe.interface.encodeFunctionData('setModuleGuard', [guardAddress])
-    })
-    await execTransaction({
-      owners: [owner],
-      safe,
-      to: safeAddress,
-      data: safe.interface.encodeFunctionData('setGuard', [guardAddress])
+      safePolicyGuard,
+      configurations: [createConfiguration({ policy: policyAddress, data: encodeModuleConfig(moduleAddress) })],
+      module: moduleAddress,
+      moduleGuard: true
     })
   }
 
@@ -236,7 +214,7 @@ describe('Authenticated module parameter', function () {
             createConfiguration({
               target: subTarget,
               policy: await allowedModulePolicy.getAddress(),
-              data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
+              data: encodeModuleConfig(moduleAddress)
             })
           ]
         ])
@@ -279,7 +257,7 @@ describe('Authenticated module parameter', function () {
             [
               createConfiguration({
                 policy: await allowedModulePolicy.getAddress(),
-                data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [ZeroAddress, true])
+                data: encodeModuleConfig(ZeroAddress)
               })
             ]
           ])

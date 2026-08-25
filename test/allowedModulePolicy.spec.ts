@@ -3,7 +3,14 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, randomAddress, SafeOperation } from '../src/utils'
+import {
+  createConfiguration,
+  createSafe,
+  encodeModuleConfig,
+  execTransaction,
+  randomAddress,
+  SafeOperation
+} from '../src/utils'
 import { deploySafePolicyGuard, deploySafeContracts, deployAllowedModulePolicy } from './deploy'
 
 describe('AllowedModulePolicy', function () {
@@ -52,7 +59,7 @@ describe('AllowedModulePolicy', function () {
       await allowedModulePolicy.connect(owner).configure(
         safeAddress,
         0, // AccessSelector doesn't matter for this policy
-        ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
+        encodeModuleConfig(moduleAddress)
       )
 
       // Check that the configured module is allowed
@@ -72,7 +79,7 @@ describe('AllowedModulePolicy', function () {
       await allowedModulePolicy.configure(
         safeAddress,
         0, // AccessSelector doesn't matter for this policy
-        ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [moduleAddress, true])
+        encodeModuleConfig(moduleAddress)
       )
 
       // Call checkTransaction and verify it returns the magic value. The module is passed as its
@@ -98,18 +105,15 @@ describe('AllowedModulePolicy', function () {
 
       const safeAddress = await safe.getAddress()
       const moduleAddress = await testModule.getAddress()
-      const encode = (module: string, allowed: boolean) =>
-        ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [module, allowed])
-
-      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encode(moduleAddress, true))
+      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encodeModuleConfig(moduleAddress))
       expect(await allowedModulePolicy.isModuleAllowed(owner, safeAddress, moduleAddress)).to.be.true
 
       // Revoking is expressible without detaching the policy from its access selector.
-      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encode(moduleAddress, false))
+      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encodeModuleConfig(moduleAddress, false))
       expect(await allowedModulePolicy.isModuleAllowed(owner, safeAddress, moduleAddress)).to.be.false
 
       // …and the grant can be reinstated afterwards.
-      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encode(moduleAddress, true))
+      await allowedModulePolicy.connect(owner).configure(safeAddress, 0, encodeModuleConfig(moduleAddress))
       expect(await allowedModulePolicy.isModuleAllowed(owner, safeAddress, moduleAddress)).to.be.true
     })
 
@@ -119,13 +123,7 @@ describe('AllowedModulePolicy', function () {
 
       for (const allowed of [true, false]) {
         await expect(
-          allowedModulePolicy
-            .connect(owner)
-            .configure(
-              safeAddress,
-              0,
-              ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [ZeroAddress, allowed])
-            )
+          allowedModulePolicy.connect(owner).configure(safeAddress, 0, encodeModuleConfig(ZeroAddress, allowed))
         ).to.be.revertedWithCustomError(allowedModulePolicy, 'InvalidModule')
       }
     })
@@ -171,7 +169,7 @@ describe('AllowedModulePolicy', function () {
         createConfiguration({
           target: target,
           policy: await allowedModulePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [testModuleAddress, true])
+          data: encodeModuleConfig(testModuleAddress)
         })
       ]
 
@@ -224,7 +222,7 @@ describe('AllowedModulePolicy', function () {
         createConfiguration({
           target: target,
           policy: await allowedModulePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [testModuleAddress, true])
+          data: encodeModuleConfig(testModuleAddress)
         })
       ]
 
