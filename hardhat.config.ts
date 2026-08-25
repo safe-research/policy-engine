@@ -38,7 +38,7 @@ const config: HardhatUserConfig = {
   solidity: {
     compilers: [
       {
-        version: '0.8.28',
+        version: '0.8.30',
         settings: {
           // Pinned explicitly: this is Hardhat's current default, but relying on the default would
           // let a Hardhat upgrade silently change the deployed bytecode.
