@@ -101,8 +101,10 @@ export const POLICY_CONTEXT_TYPE_HASH = ethers.id('SafePolicyGuard.PolicyContext
  * @param allowed Whether the module is allowed; pass `false` to revoke.
  * @dev Each policy's configuration shape lives in exactly one place here, so a change to a policy's
  *      `configure` signature is a one-line change in the tests rather than a hunt through the suite.
+ * @dev The encoders take resolved address strings rather than `AddressLike`, since `AbiCoder` is
+ *      synchronous and cannot resolve a signer or a promise.
  */
-export function encodeModuleConfig(module: AddressLike, allowed = true): string {
+export function encodeModuleConfig(module: string, allowed = true): string {
   return ethers.AbiCoder.defaultAbiCoder().encode(['address', 'bool'], [module, allowed])
 }
 
@@ -110,8 +112,24 @@ export function encodeModuleConfig(module: AddressLike, allowed = true): string 
  * Encodes `CoSignerPolicy` configuration data.
  * @param cosigner The co-signer whose signature the policy will require for the access selector.
  */
-export function encodeCoSignerConfig(cosigner: AddressLike): string {
+export function encodeCoSignerConfig(cosigner: string): string {
   return ethers.AbiCoder.defaultAbiCoder().encode(['address'], [cosigner])
+}
+
+/**
+ * Encodes `ERC20ApprovePolicy` and `ERC20TransferPolicy` configuration data.
+ * @param accounts The accounts to grant or revoke -- spenders for `ERC20ApprovePolicy`, recipients
+ *        for `ERC20TransferPolicy`. An empty list configures the access selector without allowing
+ *        anyone.
+ * @param allowed Whether the accounts are allowed; pass `false` to revoke.
+ * @dev Both policies take an `(address, bool)` array (`SpenderData` and `RecipientData`), so one
+ *      encoder serves both.
+ */
+export function encodeAllowlistConfig(accounts: string[], allowed = true): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(
+    ['tuple(address account, bool allowed)[]'],
+    [accounts.map((account) => ({ account, allowed }))]
+  )
 }
 
 /**
@@ -455,7 +473,7 @@ export async function enableGuard({
  * Function to create a random address.
  * @returns A random address.
  */
-export function randomAddress(): AddressLike {
+export function randomAddress(): string {
   return ethers.getAddress(ethers.hexlify(ethers.randomBytes(20)))
 }
 
@@ -477,10 +495,10 @@ export function randomSelector(): BytesLike {
  * @returns The configuration object.
  */
 export function createConfiguration({
-  target = ZeroAddress as AddressLike,
+  target = ZeroAddress,
   selector = '0x00000000' as BytesLike,
   operation = SafeOperation.Call,
-  policy = ZeroAddress as AddressLike,
+  policy = ZeroAddress,
   data = '0x' as BytesLike
 }): SafePolicyGuard.ConfigurationStruct {
   return {

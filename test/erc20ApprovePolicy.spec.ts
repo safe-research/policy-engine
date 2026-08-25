@@ -3,7 +3,14 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, execTransaction, randomAddress, SafeOperation } from '../src/utils'
+import {
+  createConfiguration,
+  createSafe,
+  encodeAllowlistConfig,
+  execTransaction,
+  randomAddress,
+  SafeOperation
+} from '../src/utils'
 import { deploySafeContracts, deploySafePolicyGuard, deployERC20ApprovePolicy, deployTestERC20Token } from './deploy'
 
 describe('ERC20ApprovePolicy', function () {
@@ -48,19 +55,12 @@ describe('ERC20ApprovePolicy', function () {
       const amount = ethers.parseEther('100')
 
       // Configure the ERC20 approve policy
-      const spenderData = [
-        {
-          spender,
-          allowed: true
-        }
-      ]
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('approve').selector,
           policy: await erc20ApprovePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address spender, bool allowed)[]'], [spenderData])
+          data: encodeAllowlistConfig([spender])
         })
       ]
 
@@ -102,14 +102,12 @@ describe('ERC20ApprovePolicy', function () {
       const amount = ethers.parseEther('100')
 
       // Configure the ERC20 approve policy with no spender
-      const spenderData: { spender: string; allowed: boolean }[] = []
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('approve').selector,
           policy: await erc20ApprovePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address spender, bool allowed)[]'], [spenderData])
+          data: encodeAllowlistConfig([])
         })
       ]
 
@@ -152,19 +150,12 @@ describe('ERC20ApprovePolicy', function () {
       const amount = ethers.parseEther('100')
 
       // Configure the ERC20 approve policy
-      const spenderData = [
-        {
-          spender,
-          allowed: true
-        }
-      ]
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('approve').selector,
           policy: await erc20ApprovePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address spender, bool allowed)[]'], [spenderData])
+          data: encodeAllowlistConfig([spender])
         })
       ]
 
@@ -202,14 +193,12 @@ describe('ERC20ApprovePolicy', function () {
       const amount = ethers.parseEther('1')
 
       // Configure the ERC20 approve policy with no spender
-      const spenderData: { spender: string; allowed: boolean }[] = []
-
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('approve').selector,
           policy: await erc20ApprovePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address spender, bool allowed)[]'], [spenderData])
+          data: encodeAllowlistConfig([])
         })
       ]
 
@@ -256,21 +245,13 @@ describe('ERC20ApprovePolicy', function () {
     it('Should only be able to configure ERC20 approve transactions', async function () {
       const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
 
-      // Configure the ERC20 approve policy
-      const spenderData = [
-        {
-          spender: randomAddress(),
-          allowed: true
-        }
-      ]
-
       // Trying to configure a non-approve transaction
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('transfer').selector, // Non-approve function
           policy: await erc20ApprovePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address spender, bool allowed)[]'], [spenderData])
+          data: encodeAllowlistConfig([randomAddress()])
         })
       ]
 
@@ -288,21 +269,13 @@ describe('ERC20ApprovePolicy', function () {
     it('Should only be able to configure CALL operations', async function () {
       const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
 
-      // Configure the ERC20 approve policy
-      const spenderData = [
-        {
-          spender: randomAddress(),
-          allowed: true
-        }
-      ]
-
-      // Trying to configure a non-approve transaction
+      // Trying to configure a DELEGATECALL operation
       const configurations = [
         createConfiguration({
           target: await token.getAddress(),
           selector: token.interface.getFunction('approve').selector,
           policy: await erc20ApprovePolicy.getAddress(),
-          data: ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address spender, bool allowed)[]'], [spenderData]),
+          data: encodeAllowlistConfig([randomAddress()]),
           operation: SafeOperation.DelegateCall // Non-CALL operation
         })
       ]
