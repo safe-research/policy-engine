@@ -68,21 +68,8 @@ describe('CoSignerPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Get initial balances
       const initialRecipientBalance = await ethers.provider.getBalance(await recipient.getAddress())
@@ -137,21 +124,8 @@ describe('CoSignerPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Try to execute the transaction without co-signer signature
       await expect(
@@ -182,21 +156,8 @@ describe('CoSignerPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Create the transaction data
       const txData: TransactionParametersWithNonce = {
@@ -248,21 +209,8 @@ describe('CoSignerPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Get initial balances
       const initialRecipientBalance = await ethers.provider.getBalance(await recipient.getAddress())

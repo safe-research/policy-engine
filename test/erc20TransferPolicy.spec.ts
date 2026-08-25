@@ -6,6 +6,7 @@ import { ethers } from 'hardhat'
 import {
   createConfiguration,
   createSafe,
+  enableGuard,
   encodeAllowlistConfig,
   execTransaction,
   randomAddress,
@@ -72,21 +73,8 @@ describe('ERC20TransferPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Execute the transfer transaction
       await execTransaction({
@@ -115,21 +103,8 @@ describe('ERC20TransferPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Try to execute a transfer transaction to unconfigured recipient
       await expect(
@@ -162,21 +137,8 @@ describe('ERC20TransferPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Try to execute an approve transaction (non-transfer)
       await expect(
@@ -207,21 +169,8 @@ describe('ERC20TransferPolicy', function () {
         })
       ]
 
-      // Configure the policy
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safePolicyGuard.getAddress(),
-        data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
-      })
-
-      // Enable the guard on safe
-      await execTransaction({
-        owners: [owner],
-        safe,
-        to: await safe.getAddress(),
-        data: safe.interface.encodeFunctionData('setGuard', [await safePolicyGuard.getAddress()])
-      })
+      // Configure the policy, then enable the guard
+      await enableGuard({ owner, safe, safePolicyGuard, configurations })
 
       // Approve the Safe to spend tokens (using owner's signer)
       await token.connect(owner).approve(await safe.getAddress(), amount)
