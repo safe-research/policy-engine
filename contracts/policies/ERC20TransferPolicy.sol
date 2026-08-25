@@ -8,6 +8,8 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
 /**
  * @title ERC-20 Transfer Policy
  * @dev Allow ERC-20 transfers only to a specific address list.
+ * @dev `transferFrom`'s `from` argument is deliberately unconstrained: the policy restricts where
+ *      tokens may go, not whose tokens they are.
  */
 contract ERC20TransferPolicy is IPolicy {
     using AccessSelector for AccessSelector.T;

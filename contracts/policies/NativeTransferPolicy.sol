@@ -7,6 +7,9 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
 /**
  * @title Native Transfer Policy
  * @dev Allow native token transfers.
+ * @dev The recipient comes from the access selector this is configured under, so it must be
+ *      configured per target. The CALL fallback key also satisfies {configure}, where it permits any
+ *      amount to any address, `address(0)` included.
  */
 contract NativeTransferPolicy is IPolicy {
     using AccessSelector for AccessSelector.T;
