@@ -30,3 +30,5 @@ jobs:
       # Runs after the build, which generates the TypeChain types it needs.
       - run: npm run build:ts:typecheck
       - run: npm run test
+      # The benchmarks assert nothing, but running them keeps the suite from rotting unnoticed.
+      - run: npm run test:bench

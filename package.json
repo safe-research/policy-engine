@@ -16,8 +16,8 @@
     "lint:fix": "npm run lint:fix:sol && npm run lint:fix:ts",
     "lint:fix:sol": "prettier -w contracts/ && solhint 'contracts/**/*.sol' --fix --noPrompt",
     "lint:fix:ts": "eslint --fix",
-    "test": "hardhat test --network hardhat",
-    "test:bench": "hardhat test --grep '@bench'",
+    "test": "hardhat test --network hardhat --grep '^(?!.*\\[@bench\\])'",
+    "test:bench": "hardhat test --network hardhat --grep '\\[@bench\\]'",
     "coverage": "hardhat coverage",
     "verify": "hardhat etherscan-verify --force-license --license LGPL-3.0 --network"
   },
