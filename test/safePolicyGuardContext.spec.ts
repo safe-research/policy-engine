@@ -30,7 +30,7 @@ describe('SafePolicyGuard -- context decoding', function () {
       const target = randomAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ target, policy: await recorder.getAddress() })]

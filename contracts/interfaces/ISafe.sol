@@ -41,6 +41,35 @@ interface ISafe {
     function nonce() external view returns (uint256);
 
     /**
+     * @notice Returns the list of Safe owners.
+     * @return The array of owner addresses.
+     */
+    function getOwners() external view returns (address[] memory);
+
+    /**
+     * @notice Returns the number of signatures required to execute a Safe transaction.
+     * @return The threshold.
+     */
+    function getThreshold() external view returns (uint256);
+
+    /**
+     * @notice Checks that `requiredSignatures` valid signatures over `dataHash` were provided, and
+     *         reverts otherwise.
+     * @param executor The account executing the transaction, which a `v == 1` signature is accepted
+     *        from without a pre-approved hash. Pass `address(0)` unless the executor is known and
+     *        trusted, since a `v == 1` signature is trivially constructible for any owner.
+     * @param dataHash The hash the signatures are over.
+     * @param signatures The packed signatures, sorted by ascending owner address.
+     * @param requiredSignatures The number of signatures to require.
+     */
+    function checkNSignatures(
+        address executor,
+        bytes32 dataHash,
+        bytes memory signatures,
+        uint256 requiredSignatures
+    ) external view;
+
+    /**
      * @dev Set a guard that checks transactions before execution
      *      This can only be done via a Safe transaction.
      *      ⚠️ IMPORTANT: Since a guard has full power to block Safe transaction execution,

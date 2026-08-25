@@ -27,7 +27,7 @@ describe('SafePolicyGuard -- execution outcome', function () {
       const testModule = await (await ethers.getContractFactory('TestModule')).deploy()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ policy: await statefulPolicy.getAddress() })],

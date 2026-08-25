@@ -16,7 +16,7 @@ describe('AllowPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0x2),
       safeProxyFactory,
@@ -42,7 +42,7 @@ describe('AllowPolicy', function () {
 
       // Configure the allow policy to send some value to the target, then enable the guard
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ target, policy: await allowPolicy.getAddress() })]
@@ -73,7 +73,7 @@ describe('AllowPolicy', function () {
       const value = ethers.parseEther('1')
 
       // Enable the guard on safe, with nothing configured
-      await enableGuard({ owner, safe, safePolicyGuard })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
 
       // Try to execute a random transaction
       await expect(

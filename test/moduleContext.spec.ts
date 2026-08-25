@@ -35,7 +35,7 @@ describe('Authenticated module parameter', function () {
     const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
 
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress,
       saltNonce: BigInt(0x4d),
       safeProxyFactory,
@@ -72,7 +72,7 @@ describe('Authenticated module parameter', function () {
     moduleAddress: string
   ) {
     await enableGuard({
-      owner,
+      owners: [owner],
       safe,
       safePolicyGuard,
       configurations: [createConfiguration({ policy: policyAddress, data: encodeModuleConfig(moduleAddress) })],

@@ -25,7 +25,7 @@ describe('ERC20TransferPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0x4),
       safeProxyFactory,
@@ -75,7 +75,7 @@ describe('ERC20TransferPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Execute the transfer transaction
       await execTransaction({
@@ -105,7 +105,7 @@ describe('ERC20TransferPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Try to execute a transfer transaction to unconfigured recipient
       await expect(
@@ -139,7 +139,7 @@ describe('ERC20TransferPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Try to execute an approve transaction (non-transfer)
       await expect(
@@ -171,7 +171,7 @@ describe('ERC20TransferPolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Approve the Safe to spend tokens (using owner's signer)
       await token.connect(owner).approve(await safe.getAddress(), amount)
@@ -313,7 +313,7 @@ describe('ERC20TransferPolicy', function () {
       const recipientAddress = await recipient.getAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -349,7 +349,7 @@ describe('ERC20TransferPolicy', function () {
       const recipientAddress = await recipient.getAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [

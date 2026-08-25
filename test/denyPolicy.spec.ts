@@ -16,7 +16,7 @@ describe('DenyPolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0xa),
       safeProxyFactory,
@@ -52,7 +52,7 @@ describe('DenyPolicy', function () {
 
       // Configure the deny policy for the target, then enable the guard
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [createConfiguration({ target, policy: await denyPolicy.getAddress() })]

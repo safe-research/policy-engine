@@ -25,7 +25,7 @@ describe('ERC20ApprovePolicy', function () {
     // Deploy the Safe contracts
     const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
     const safe = await createSafe({
-      owner,
+      owners: [owner],
       guard: ZeroAddress, // No guard at this point
       saltNonce: BigInt(0x3),
       safeProxyFactory,
@@ -67,7 +67,7 @@ describe('ERC20ApprovePolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Verify there was no previous approval
       expect(await token.allowance(await safe.getAddress(), spender)).to.equal(0)
@@ -101,7 +101,7 @@ describe('ERC20ApprovePolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Try to execute the approve transaction
       await expect(
@@ -136,7 +136,7 @@ describe('ERC20ApprovePolicy', function () {
       ]
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Try to execute a transfer transaction (non-approve)
       await expect(
@@ -177,7 +177,7 @@ describe('ERC20ApprovePolicy', function () {
       expect(await token.allowance(await safe.getAddress(), spender)).to.equal(amount)
 
       // Configure the policy, then enable the guard
-      await enableGuard({ owner, safe, safePolicyGuard, configurations })
+      await enableGuard({ owners: [owner], safe, safePolicyGuard, configurations })
 
       // Try to execute the zero amount approve transaction
       await execTransaction({
@@ -297,7 +297,7 @@ describe('ERC20ApprovePolicy', function () {
       const amount = ethers.parseEther('100')
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
@@ -329,7 +329,7 @@ describe('ERC20ApprovePolicy', function () {
       const spender = randomAddress()
 
       await enableGuard({
-        owner,
+        owners: [owner],
         safe,
         safePolicyGuard,
         configurations: [
