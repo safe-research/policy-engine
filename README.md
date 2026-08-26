@@ -73,6 +73,25 @@ These are known and deliberate. All of them fail closed — they deny or revert 
 * **A transaction carrying 1–3 bytes of calldata is always rejected** with `InvalidSelector`, because no function selector can be decoded from it. Empty calldata is fine and decodes to the zero selector.
 * **The fallback key is indistinguishable from a real access selector for `address(0)`.** `create(address(0), bytes4(0), operation)` and `createFallback(operation)` are the same value, so a plain value transfer to `address(0)` resolves to the catch-all policy. A fallback policy therefore also authorizes burning value to the zero address.
 * **`MultiSendPolicy` pairs contexts with sub-transactions positionally** and yields an empty context once the supplied list is exhausted. A batch cannot give context to only its last sub-transaction without padding the earlier ones.
+* **A batch cannot repeat an identical signature-checked sub-transaction.** `MultiSendPolicy` checks every occurrence separately, and each derives the same hash, so one signature would otherwise authorize all of them. `CoSignerPolicy`, `IncreasedThresholdPolicy` and `SafenetPolicy` therefore spend what they verify. Repeat the action by varying it, or by splitting it across nonces.
+
+### Policies
+
+| Policy | Enforces |
+| --- | --- |
+| [`AllowPolicy`](./contracts/policies/AllowPolicy.sol) | Permits the access selector unconditionally. |
+| [`DenyPolicy`](./contracts/policies/DenyPolicy.sol) | Refuses the access selector unconditionally. |
+| [`OneTimeAllowPolicy`](./contracts/policies/OneTimeAllowPolicy.sol) | Permits the access selector once, then denies until reconfigured. |
+| [`AllowedModulePolicy`](./contracts/policies/AllowedModulePolicy.sol) | Restricts the authorizing module to an allowlist. |
+| [`NativeTransferPolicy`](./contracts/policies/NativeTransferPolicy.sol) | Permits value-bearing `CALL`s and nothing else. |
+| [`ERC20TransferPolicy`](./contracts/policies/ERC20TransferPolicy.sol) | Restricts ERC-20 transfer recipients to an allowlist, open-ended or single-use. |
+| [`ERC20ApprovePolicy`](./contracts/policies/ERC20ApprovePolicy.sol) | Restricts ERC-20 approval spenders to an allowlist, open-ended or single-use. Revoking an allowance is always permitted. |
+| [`MultiSendPolicy`](./contracts/policies/MultiSendPolicy.sol) | Applies the Safe's policies to each sub-transaction of a `multiSend` batch. |
+| [`CoSignerPolicy`](./contracts/policies/CoSignerPolicy.sol) | Requires a co-signature over the transaction, spent on use. Transaction path only. |
+| [`IncreasedThresholdPolicy`](./contracts/policies/IncreasedThresholdPolicy.sol) | Requires more owner signatures than the Safe's threshold, spent on use. Transaction path only. |
+| [`SafenetPolicy`](./contracts/policies/SafenetPolicy.sol) | Requires a [Safenet](https://github.com/safe-research/safenet) FROST threshold-signature attestation. Transaction path only. |
+
+Allowlist and grant state is namespaced by `(policy guard, safe)`, so a policy contract is shared across Safes without them interfering. Single-use grants are spent during the pre-execution check, which is why the guard's atomicity requirements (`safeTxGas == 0`, and the after-execution hooks) matter: a failed execution rolls the spend back with it.
 
 ### Access Selectors
 
@@ -157,7 +176,7 @@ Note: If the Safe reactivates the guard, this policy should be removed. This nee
 
 ## Deployment note
 
-Contracts compile for the **Cancun** EVM, which the vendored Safenet libraries require (they use `mcopy`). Chains that have not activated the Cancun upgrade are not deployment targets.
+Contracts compile for the **Cancun** EVM. `SafenetPolicy` depends on the vendored Safenet crypto libraries, which use `mcopy`, so chains that have not activated Cancun are not deployment targets.
 
 Every change to the guard changes its bytecode and therefore its CREATE2 address. Existing deployments must be redeployed and Safes re-pointed at the new address; a Safe keeps referencing whichever address it was given.
 
