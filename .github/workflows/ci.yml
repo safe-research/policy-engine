@@ -16,6 +16,9 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
+      # Re-downloads the vendored Safenet sources at the commit each file records and diffs them,
+      # so a local edit or a stale pin fails the build rather than going unnoticed.
+      - run: npm run vendor:check
 
   tests:
     runs-on: ubuntu-latest
