@@ -54,6 +54,25 @@ contract ERC20TransferPolicy is IPolicy {
      */
     error InvalidOperation();
 
+    /**
+     * @notice Emitted whenever the permission recorded for a recipient changes.
+     * @param policyGuard The policy guard whose namespace the permission belongs to.
+     * @param safe The Safe address.
+     * @param token The token address.
+     * @param recipient The recipient address.
+     * @param permission How often the recipient may still receive tokens, after the change.
+     * @dev Emitted on every write to the allowlist -- both {configure} and the transfer that spends
+     *      a {Permission.ONCE} grant -- so the log replays the policy's state on its own, with no
+     *      `eth_call` needed. {Permission.NONE} means the recipient is no longer allowlisted.
+     */
+    event RecipientPermissionChanged(
+        address indexed policyGuard,
+        address indexed safe,
+        address indexed token,
+        address recipient,
+        Permission permission
+    );
+
     function checkTransaction(
         address safe,
         address to,
@@ -70,6 +89,7 @@ contract ERC20TransferPolicy is IPolicy {
         require(permission != Permission.NONE, Unauthorized());
         if (permission == Permission.ONCE) {
             delete $recipients[msg.sender][safe][token][recipient];
+            emit RecipientPermissionChanged(msg.sender, safe, token, recipient, Permission.NONE);
         }
         return IPolicy.checkTransaction.selector;
     }
@@ -104,6 +124,13 @@ contract ERC20TransferPolicy is IPolicy {
         for (uint256 i = 0; i < recipientList.length; i++) {
             // solhint-disable-next-line reentrancy
             $recipients[msg.sender][safe][target][recipientList[i].recipient] = recipientList[i].permission;
+            emit RecipientPermissionChanged(
+                msg.sender,
+                safe,
+                target,
+                recipientList[i].recipient,
+                recipientList[i].permission
+            );
         }
         return true;
     }

@@ -54,6 +54,25 @@ contract ERC20ApprovePolicy is IPolicy {
      */
     error InvalidOperation();
 
+    /**
+     * @notice Emitted whenever the permission recorded for a spender changes.
+     * @param policyGuard The policy guard whose namespace the permission belongs to.
+     * @param safe The Safe address.
+     * @param token The token address.
+     * @param spender The spender address.
+     * @param permission How often the spender may still be approved, after the change.
+     * @dev Emitted on every write to the allowlist -- both {configure} and the approval that spends
+     *      a {Permission.ONCE} grant -- so the log replays the policy's state on its own, with no
+     *      `eth_call` needed. {Permission.NONE} means the spender is no longer allowlisted.
+     */
+    event SpenderPermissionSet(
+        address indexed policyGuard,
+        address indexed safe,
+        address indexed token,
+        address spender,
+        Permission permission
+    );
+
     function checkTransaction(
         address safe,
         address to,
@@ -72,6 +91,7 @@ contract ERC20ApprovePolicy is IPolicy {
             require(permission != Permission.NONE, Unauthorized());
             if (permission == Permission.ONCE) {
                 delete $spenders[msg.sender][safe][token][spender];
+                emit SpenderPermissionSet(msg.sender, safe, token, spender, Permission.NONE);
             }
         }
         return IPolicy.checkTransaction.selector;
@@ -103,6 +123,7 @@ contract ERC20ApprovePolicy is IPolicy {
         SpenderData[] memory spenderList = abi.decode(data, (SpenderData[]));
         for (uint256 i = 0; i < spenderList.length; i++) {
             $spenders[msg.sender][safe][target][spenderList[i].spender] = spenderList[i].permission;
+            emit SpenderPermissionSet(msg.sender, safe, target, spenderList[i].spender, spenderList[i].permission);
         }
         return true;
     }
