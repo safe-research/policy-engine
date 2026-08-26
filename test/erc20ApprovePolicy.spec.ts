@@ -357,7 +357,6 @@ describe('ERC20ApprovePolicy', function () {
   })
 
   describe('Events', function () {
-
     it('Should emit when an approval spends a one-time grant', async function () {
       const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
 
