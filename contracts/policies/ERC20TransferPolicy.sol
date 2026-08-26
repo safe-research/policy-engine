@@ -54,6 +54,20 @@ contract ERC20TransferPolicy is IPolicy {
      */
     error InvalidOperation();
 
+    /**
+     * @notice Emitted when a transfer spends a single-use permission recorded for a recipient.
+     * @param policyGuard The policy guard whose namespace the permission belongs to.
+     * @param safe The Safe address.
+     * @param token The token address.
+     * @param recipient The recipient address.
+     */
+    event RecipientPermissionUsed(
+        address indexed policyGuard,
+        address indexed safe,
+        address indexed token,
+        address recipient
+    );
+
     function checkTransaction(
         address safe,
         address to,
@@ -70,6 +84,7 @@ contract ERC20TransferPolicy is IPolicy {
         require(permission != Permission.NONE, Unauthorized());
         if (permission == Permission.ONCE) {
             delete $recipients[msg.sender][safe][token][recipient];
+            emit RecipientPermissionUsed(msg.sender, safe, token, recipient);
         }
         return IPolicy.checkTransaction.selector;
     }

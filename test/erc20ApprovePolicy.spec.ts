@@ -355,4 +355,100 @@ describe('ERC20ApprovePolicy', function () {
       )
     })
   })
+
+  describe('Events', function () {
+
+    it('Should emit when an approval spends a one-time grant', async function () {
+      const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const spender = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('approve').selector,
+            policy: await erc20ApprovePolicy.getAddress(),
+            data: encodeAllowlistConfig([spender], Permission.Once)
+          })
+        ]
+      })
+
+      // Spending the grant removes the spender from the allowlist, which an indexer only learns
+      // about from this event -- the guard emits nothing for a transaction it permits.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await token.getAddress(),
+          data: token.interface.encodeFunctionData('approve', [spender, ethers.parseEther('100')])
+        })
+      )
+        .to.emit(erc20ApprovePolicy, 'SpenderPermissionUsed')
+        .withArgs(safePolicyGuard, safe, token, spender)
+    })
+
+    it('Should not emit when an approval leaves the allowlist unchanged', async function () {
+      const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const spender = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('approve').selector,
+            policy: await erc20ApprovePolicy.getAddress(),
+            data: encodeAllowlistConfig([spender], Permission.Always)
+          })
+        ]
+      })
+
+      // An open-ended grant is not spent, so there is no state change to report.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await token.getAddress(),
+          data: token.interface.encodeFunctionData('approve', [spender, ethers.parseEther('100')])
+        })
+      ).to.not.emit(erc20ApprovePolicy, 'SpenderPermissionUsed')
+    })
+
+    it('Should not emit when a zero-amount approval bypasses the allowlist', async function () {
+      const { owner, safePolicyGuard, safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const spender = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('approve').selector,
+            policy: await erc20ApprovePolicy.getAddress(),
+            data: encodeAllowlistConfig([spender], Permission.Once)
+          })
+        ]
+      })
+
+      // Revoking an allowance never touches the grant, so the indexed state stays put.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await token.getAddress(),
+          data: token.interface.encodeFunctionData('approve', [spender, 0])
+        })
+      ).to.not.emit(erc20ApprovePolicy, 'SpenderPermissionUsed')
+    })
+  })
 })
