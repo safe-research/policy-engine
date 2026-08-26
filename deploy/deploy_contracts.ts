@@ -79,7 +79,7 @@ const deploy: DeployFunction = async function ({ run, getChainId, getNamedAccoun
   await deployContract('MultiSendPolicy')
   await deployContract('NativeTransferPolicy')
 
-  if (Object.values(SAFENET).every((value) => value !== undefined)) {
+  if (Object.values(SAFENET).every((value) => value !== undefined && value !== '')) {
     await deployContract('SafenetPolicy', [
       BigInt(SAFENET.consensusChainId!),
       SAFENET.consensusAddress!,
