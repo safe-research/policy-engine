@@ -210,4 +210,39 @@ describe('OneTimeAllowPolicy', function () {
       await expect(oneTimeAllowPolicy.connect(deployer).configure(safe, access, '0x')).to.be.reverted
     })
   })
+
+  describe('Events', function () {
+    it('Should emit when a transaction spends the allowance', async function () {
+      const { owner, safePolicyGuard, safe, oneTimeAllowPolicy, accessSelector } = await loadFixture(fixture)
+
+      const target = randomAddress()
+      const access = await accessSelector.create(target, '0x00000000', SafeOperation.Call)
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target,
+            policy: await oneTimeAllowPolicy.getAddress(),
+            data: encodeOneTimeGrantConfig()
+          })
+        ]
+      })
+
+      // Spending the grant revokes it, which an indexer only learns about from this event -- the
+      // guard emits nothing for a transaction it permits.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: target,
+          value: ethers.parseEther('1')
+        })
+      )
+        .to.emit(oneTimeAllowPolicy, 'OneTimeAllowanceUsed')
+        .withArgs(safePolicyGuard, safe, access)
+    })
+  })
 })

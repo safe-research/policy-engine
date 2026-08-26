@@ -25,6 +25,17 @@ contract OneTimeAllowPolicy is IPolicy {
     error Unauthorized();
 
     /**
+     * @notice Emitted when a transaction spends the one-time allowance for an access selector.
+     * @param policyGuard The policy guard whose namespace the allowance belonged to.
+     * @param safe The Safe address.
+     * @param access The access selector.
+     * @dev The allowance is always cleared by a successful check. A
+     *      {configure} write is not reported here; the guard logs configuration through its own
+     *      events, so reconstructing the allowance needs both sources.
+     */
+    event OneTimeAllowanceUsed(address indexed policyGuard, address indexed safe, AccessSelector.T indexed access);
+
+    /**
      * @inheritdoc IPolicy
      * @dev Spends the grant, so a batch replaying the same sub-transaction is allowed exactly once.
      */
@@ -40,6 +51,7 @@ contract OneTimeAllowPolicy is IPolicy {
     ) external override returns (bytes4 magicValue) {
         require($grants[msg.sender][safe][access], Unauthorized());
         delete $grants[msg.sender][safe][access];
+        emit OneTimeAllowanceUsed(msg.sender, safe, access);
         return IPolicy.checkTransaction.selector;
     }
 
