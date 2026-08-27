@@ -54,6 +54,20 @@ contract ERC20ApprovePolicy is IPolicy {
      */
     error InvalidOperation();
 
+    /**
+     * @notice Emitted when an approval spends a single-use permission recorded for a spender.
+     * @param policyGuard The policy guard whose namespace the permission belongs to.
+     * @param safe The Safe address.
+     * @param token The token address.
+     * @param spender The spender address.
+     */
+    event SpenderPermissionUsed(
+        address indexed policyGuard,
+        address indexed safe,
+        address indexed token,
+        address spender
+    );
+
     function checkTransaction(
         address safe,
         address to,
@@ -72,6 +86,7 @@ contract ERC20ApprovePolicy is IPolicy {
             require(permission != Permission.NONE, Unauthorized());
             if (permission == Permission.ONCE) {
                 delete $spenders[msg.sender][safe][token][spender];
+                emit SpenderPermissionUsed(msg.sender, safe, token, spender);
             }
         }
         return IPolicy.checkTransaction.selector;

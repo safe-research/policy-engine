@@ -372,4 +372,69 @@ describe('ERC20TransferPolicy', function () {
       )
     })
   })
+
+  describe('Events', function () {
+    it('Should emit when a transfer spends a one-time grant', async function () {
+      const { owner, recipient, safePolicyGuard, safe, erc20TransferPolicy, token } = await loadFixture(fixture)
+
+      const recipientAddress = await recipient.getAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('transfer').selector,
+            policy: await erc20TransferPolicy.getAddress(),
+            data: encodeAllowlistConfig([recipientAddress], Permission.Once)
+          })
+        ]
+      })
+
+      // Spending the grant removes the recipient from the allowlist, which an indexer only learns
+      // about from this event -- the guard emits nothing for a transaction it permits.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await token.getAddress(),
+          data: token.interface.encodeFunctionData('transfer', [recipientAddress, ethers.parseEther('100')])
+        })
+      )
+        .to.emit(erc20TransferPolicy, 'RecipientPermissionUsed')
+        .withArgs(safePolicyGuard, safe, token, recipientAddress)
+    })
+
+    it('Should not emit when a transfer leaves the allowlist unchanged', async function () {
+      const { owner, recipient, safePolicyGuard, safe, erc20TransferPolicy, token } = await loadFixture(fixture)
+
+      const recipientAddress = await recipient.getAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await token.getAddress(),
+            selector: token.interface.getFunction('transfer').selector,
+            policy: await erc20TransferPolicy.getAddress(),
+            data: encodeAllowlistConfig([recipientAddress], Permission.Always)
+          })
+        ]
+      })
+
+      // An open-ended grant is not spent, so there is no state change to report.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await token.getAddress(),
+          data: token.interface.encodeFunctionData('transfer', [recipientAddress, ethers.parseEther('100')])
+        })
+      ).to.not.emit(erc20TransferPolicy, 'RecipientPermissionUsed')
+    })
+  })
 })
