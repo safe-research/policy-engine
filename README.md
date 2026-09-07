@@ -75,6 +75,12 @@ These are known and deliberate. All of them fail closed — they deny or revert 
 * **`MultiSendPolicy` pairs contexts with sub-transactions positionally** and yields an empty context once the supplied list is exhausted. A batch cannot give context to only its last sub-transaction without padding the earlier ones.
 * **A batch cannot repeat an identical signature-checked sub-transaction.** `MultiSendPolicy` checks every occurrence separately, and each derives the same hash, so one signature would otherwise authorize all of them. `CoSignerPolicy`, `IncreasedThresholdPolicy` and `SafenetPolicy` therefore spend what they verify. Repeat the action by varying it, or by splitting it across nonces.
 
+#### Where the check and the execution can diverge
+
+A policy decides on the transaction tuple the guard hands it. In the cases below the action that actually executes can differ from that tuple. Unlike the limitations above these do not necessarily fail closed, so policy authors have to account for them:
+
+* **A `DELEGATECALL` runs with a `msg.value` no policy can see.** `Safe.execTransaction` is `payable`, the attached ETH is not covered by the transaction hash the owners signed, and `delegatecall` takes no value argument — it inherits the caller frame's `msg.value`. Any executor can therefore attach ETH to an otherwise untouched owner-signed transaction, and the delegated code observes it. The `value` given to policies is the *declared* Safe transaction value only; for `DELEGATECALL` it says nothing about what the delegated code sees.
+
 ### Policies
 
 | Policy | Enforces |
