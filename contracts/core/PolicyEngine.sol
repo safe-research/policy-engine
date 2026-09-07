@@ -94,6 +94,11 @@ abstract contract PolicyEngine is IPolicyEngine {
     error PolicyConfigurationFailed();
 
     /**
+     * @notice Error indicating a checked transaction targeted this contract.
+     */
+    error GuardTargetDenied();
+
+    /**
      * @notice Event emitted when a policy is confirmed.
      * @param safe The address of the safe.
      * @param target The target address of the policy.
@@ -179,6 +184,14 @@ abstract contract PolicyEngine is IPolicyEngine {
             require($checkingModule == address(0), ModuleConfigurationDenied());
             return address(0);
         }
+
+        // Nothing else may target this contract. Safe invokes the guard callbacks with the Safe as
+        // `msg.sender`, which is indistinguishable from the Safe executing an ordinary transaction
+        // aimed here. So a checked transaction could otherwise drive a second, fabricated policy
+        // check for an action that never executes, and choose the `module` it is attributed to.
+        // Default-deny rather than a selector list, so a future entry point needs no enumeration.
+        // Placed outside `_allowedCalls` so an override widening that hook cannot reopen this.
+        require(to != address(this), GuardTargetDenied());
 
         (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
         require(policy != address(0), AccessDenied(address(0)));
