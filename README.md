@@ -80,6 +80,7 @@ These are known and deliberate. All of them fail closed — they deny or revert 
 A policy decides on the transaction tuple the guard hands it. In the cases below the action that actually executes can differ from that tuple. Unlike the limitations above these do not necessarily fail closed, so policy authors have to account for them:
 
 * **A `DELEGATECALL` runs with a `msg.value` no policy can see.** `Safe.execTransaction` is `payable`, the attached ETH is not covered by the transaction hash the owners signed, and `delegatecall` takes no value argument — it inherits the caller frame's `msg.value`. Any executor can therefore attach ETH to an otherwise untouched owner-signed transaction, and the delegated code observes it. The `value` given to policies is the *declared* Safe transaction value only; for `DELEGATECALL` it says nothing about what the delegated code sees.
+* **A token that reports failure by returning `false` still counts as a success.** The after-execution hooks receive only Safe's success flag, which records whether the low-level call reverted, not what it returned. A non-compliant ERC-20 that returns `false` without reverting is therefore indistinguishable from one that transferred, so a stateful policy's pre-check writes stay committed although nothing moved — spending a one-time grant, for instance. Route such tokens through an adapter that reverts on `false`.
 
 ### Policies
 
