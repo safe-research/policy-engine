@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-43 of 43 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+44 of 44 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,14 +21,14 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 30 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 31 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
 | `certora/specs/` | 12 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 30 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/conf/` | 31 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
 | `certora/harnesses/` | 6 files, 7 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
@@ -45,7 +45,7 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 23 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 30 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 31 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -181,6 +181,7 @@ The same cases stand behind `WAIVED-S-4`.
 | `Allow.conf` | `Allow.spec` | 2 | `R-ALLOW-1` green |
 | `AllowWitness.conf` | `Allow.spec` | 1 | `W-ALLOW-1` green |
 | `Deny.conf` | `Deny.spec` | 2 | `R-DENY-1` green |
+| `DenyWitness.conf` | `Deny.spec` | 1 | `W-DENY-1` green |
 
 #### Ids introduced here
 
@@ -190,6 +191,7 @@ The same cases stand behind `WAIVED-S-4`.
 | `L-POL-7` | Exact bitvector modelling for every `satisfy` rule in the unit, with the `assert` rules left on the default encoding in `Allow.conf` and `Deny.conf` | job [1dad762d](https://prover.certora.com/output/950385/1dad762d6a0d410b963792b88e971a5b?anonymousKey=005f8d141665d81eeabd2cc51d814e80d9d1e997) |
 | `L-POL-8` | Per-unit instance of L-W0-HASH and the loop template keys: executions hashing a `bytes` longer than 3200 bytes are dropped. The bound is inert in this unit, no policy it verifies and no rule of its specs hashing a variable-length value, so the revert-iff rows hold at every calldata length | job [982fe202](https://prover.certora.com/output/950385/982fe20275cc42a594f7bcf1c4edc770?anonymousKey=a4a2e30026bd3e8512daeb011d79ad84ff36578a) |
 | `W-ALLOW-1` | a `checkTransaction` returning `MAGIC` with `value > 0`, `data.length >= 4`, `module != 0` | witness row |
+| `W-DENY-1` | a non-reverting `checkTransaction` returning zero on the shape W-ALLOW-1 pins | witness row |
 
 ## Evidence rules
 
