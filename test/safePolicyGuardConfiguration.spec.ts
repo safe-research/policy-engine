@@ -219,14 +219,13 @@ describe('SafePolicyGuard -- immediate configuration', function () {
           to: await safePolicyGuard.getAddress(),
           data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configuration])
         })
-      )
-        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
-        .withArgs(ZeroAddress)
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardTargetDenied')
     })
 
     it('Should not be able to configure immediately even when a policy permits calling the guard', async function () {
-      // The guard check is not enough on its own to keep `configureImmediately` unreachable: a
-      // permissive fallback lets the call through, which would defeat the delay entirely.
+      // Two independent guarantees keep `configureImmediately` unreachable once installed: the
+      // engine refuses any checked transaction aimed at the guard, and the function itself rejects
+      // a caller that already has the guard enabled.
       const { owner, safePolicyGuard, safe, mockPolicy } = await loadFixture(fixture)
       const guardAddress = await safePolicyGuard.getAddress()
 
@@ -246,7 +245,7 @@ describe('SafePolicyGuard -- immediate configuration', function () {
             [createConfiguration({ target: randomAddress(), policy: await mockPolicy.getAddress() })]
           ])
         })
-      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardAlreadyEnabled')
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardTargetDenied')
     })
 
     it('Should not be able to configure immediately when only the module guard is enabled', async function () {

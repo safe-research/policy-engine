@@ -9,13 +9,15 @@ import {
   buildSafeTransaction,
   createConfiguration,
   enableGuard,
+  encodeModuleConfig,
+  encodeOneTimeGrantConfig,
   execTransaction,
   getConfigurationRoot,
   getGuard,
   randomAddress,
   SafeOperation
 } from '../src/utils'
-import { deployAllowPolicy, deploySafeContracts } from './deploy'
+import { deployAllowPolicy, deployAllowedModulePolicy, deployOneTimeAllowPolicy, deploySafeContracts } from './deploy'
 import { safePolicyGuardFixture as fixture } from './fixtures'
 
 describe('SafePolicyGuard -- interface surface and guard entries', function () {
@@ -256,6 +258,145 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
       })
 
       expect(await getGuard(safe)).to.equal(ZeroAddress)
+    })
+  })
+  describe('Guard as a transaction target', function () {
+    // Safe invokes the guard callbacks with the Safe as `msg.sender`, which is indistinguishable
+    // from the Safe executing an ordinary transaction aimed at the guard. Without the denial, the
+    // second case starts a fresh top-level check on caller-chosen arguments: the reentrancy gate
+    // does not catch it, because `_exitCheck` has already run by the time the Safe executes the
+    // transaction body.
+    const CHECK_TRANSACTION =
+      'checkTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes,address)'
+
+    it('Should not let a transaction spend policy state through the guard callback', async function () {
+      const { owner, safe, safePolicyGuard, accessSelector } = await loadFixture(fixture)
+      const { oneTimeAllowPolicy } = await deployOneTimeAllowPolicy()
+      const { allowPolicy } = await deployAllowPolicy()
+
+      const protectedTarget = randomAddress()
+      const guardAddress = await safePolicyGuard.getAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: protectedTarget,
+            policy: await oneTimeAllowPolicy.getAddress(),
+            data: encodeOneTimeGrantConfig()
+          }),
+          // A policy that would otherwise let the callback be called.
+          createConfiguration({
+            target: guardAddress,
+            selector: safePolicyGuard.interface.getFunction(CHECK_TRANSACTION)!.selector,
+            policy: await allowPolicy.getAddress()
+          })
+        ]
+      })
+
+      const access = await accessSelector.create(protectedTarget, '0x00000000', SafeOperation.Call)
+      expect(await oneTimeAllowPolicy.isGranted(safePolicyGuard, safe, access)).to.equal(true)
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData(CHECK_TRANSACTION, [
+            protectedTarget,
+            ethers.parseEther('1'),
+            '0x',
+            SafeOperation.Call,
+            0,
+            0,
+            0,
+            ZeroAddress,
+            ZeroAddress,
+            '0x',
+            ZeroAddress
+          ])
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardTargetDenied')
+
+      // The grant is intact, so it was never spent against an action that did not run.
+      expect(await oneTimeAllowPolicy.isGranted(safePolicyGuard, safe, access)).to.equal(true)
+    })
+
+    it('Should not let a transaction forge the authorizing module', async function () {
+      const { owner, safe, safePolicyGuard } = await loadFixture(fixture)
+      const { allowedModulePolicy } = await deployAllowedModulePolicy()
+      const { allowPolicy } = await deployAllowPolicy()
+
+      const protectedTarget = randomAddress()
+      const forgedModule = randomAddress()
+      const guardAddress = await safePolicyGuard.getAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: protectedTarget,
+            policy: await allowedModulePolicy.getAddress(),
+            data: encodeModuleConfig(forgedModule)
+          }),
+          createConfiguration({
+            target: guardAddress,
+            selector: safePolicyGuard.interface.getFunction('checkModuleTransaction')!.selector,
+            policy: await allowPolicy.getAddress()
+          })
+        ]
+      })
+
+      // `module` is sourced from engine state during a genuine callback, so an owner transaction
+      // carries `address(0)` and the policy rejects it. Calling the callback directly would
+      // otherwise let the caller choose the value instead.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData('checkModuleTransaction', [
+            protectedTarget,
+            ethers.parseEther('1'),
+            '0x',
+            SafeOperation.Call,
+            forgedModule
+          ])
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'GuardTargetDenied')
+    })
+
+    it('Should still allow the configuration entry points as a transaction target', async function () {
+      // The denial must not swallow the anti-lockout escape hatch.
+      const { owner, safe, safePolicyGuard, mockPolicy } = await loadFixture(fixture)
+      const guardAddress = await safePolicyGuard.getAddress()
+
+      await enableGuard({ owners: [owner], safe, safePolicyGuard })
+
+      const configurations = [createConfiguration({ target: randomAddress(), policy: await mockPolicy.getAddress() })]
+      const root = getConfigurationRoot(configurations)
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [root])
+        })
+      ).to.not.be.reverted
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: guardAddress,
+          data: safePolicyGuard.interface.encodeFunctionData('invalidateRoot', [root])
+        })
+      ).to.not.be.reverted
     })
   })
 })
