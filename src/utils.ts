@@ -169,10 +169,16 @@ export enum Permission {
  *      one encoder serves both.
  */
 export function encodeAllowlistConfig(accounts: string[], permission = Permission.Always): string {
-  return ethers.AbiCoder.defaultAbiCoder().encode(
-    ['tuple(address account, uint8 permission)[]'],
-    [accounts.map((account) => ({ account, permission }))]
-  )
+  return encodeAllowlistEntries(accounts.map((account) => ({ account, permission })))
+}
+
+/**
+ * Encodes an `ERC20ApprovePolicy` or `ERC20TransferPolicy` allowlist whose entries carry different
+ * permissions, which {encodeAllowlistConfig} cannot express.
+ * @param entries The accounts and how often each may be used.
+ */
+export function encodeAllowlistEntries(entries: { account: string; permission: Permission }[]): string {
+  return ethers.AbiCoder.defaultAbiCoder().encode(['tuple(address account, uint8 permission)[]'], [entries])
 }
 
 /**
