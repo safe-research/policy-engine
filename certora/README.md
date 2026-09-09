@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-77 of 77 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+82 of 82 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,14 +21,14 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 38 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 39 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 19 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 38 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/specs/` | 20 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
+| `certora/conf/` | 39 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
 | `certora/harnesses/` | 8 files, 11 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `MultiSendPolicyHarness`, `EngineRecorderHarness`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
@@ -45,7 +45,7 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 24 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 38 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 39 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -248,6 +248,7 @@ The two list walks stand behind `WAIVED-S-3`.
 | conf | spec | rules | status |
 |---|---|---|---|
 | `MultiSend.conf` | `MultiSend.spec` | 19 | `R-MS-1` to `R-MS-3` and `R-MS-8` green; against the recording engine summary, every decoded sub-transaction is checked exactly once in batch order (`R_MS_4`) with its decoded target, value, calldata and operation (`R_MS_5`, `R_MS_5_itemDecoder`) and its positional context (`R_MS_6`, `R_MS_6_ctxDecoder`), and a reverting sub-check reverts the batch while magic is returned only if every sub-check returned (`R_MS_7_denial`, `R_MS_7_magic`); witnesses `W_MS_1a`, `W_MS_1b` and `W_MS_1c` |
+| `MultiSendPin.conf` | `MultiSendPin.spec` | 5 | `R-MS-4` to `R-MS-7`, `W-MS-1` green |
 
 Tests: `test/multiSendPolicy.spec.ts`, 7 cases under `Nested Batches` and `Long Batches`.
 
@@ -261,9 +262,11 @@ The same cases are the evidence for `WAIVED-H-7`.
 | `L-MS-2` | Assumed `data.length <= 375`, with at most three sub-transactions and four loop entries derived from that bound and asserted | job [4aa94063](https://prover.certora.com/output/950385/4aa940637688463292e6f5fbea2b6afa?anonymousKey=3b67cf96d9c2b63c72edd763b4bbc9f4c4734284) |
 | `L-MS-4` | The recording summary hashes `data_i` and `ctx_i` on every sub-call, so executions hashing more than 416 bytes are dropped and the context envelope is bounded to 416 bytes | job [4aa94063](https://prover.certora.com/output/950385/4aa940637688463292e6f5fbea2b6afa?anonymousKey=3b67cf96d9c2b63c72edd763b4bbc9f4c4734284) |
 | `L-MS-5` | The walkers mirror one line, the iteration, and decode with the real inherited `internal pure` decoders, so no offset arithmetic is re-derived in the harness | job [4aa94063](https://prover.certora.com/output/950385/4aa940637688463292e6f5fbea2b6afa?anonymousKey=3b67cf96d9c2b63c72edd763b4bbc9f4c4734284) |
+| `L-MS-6` | Every rule of the pin spec fixes the callee, and therefore `msg.sender`, to `EngineRecorderHarness`, and starts its cursor at zero | job [fc8e42b3](https://prover.certora.com/output/950385/fc8e42b349bf47d1a3beb6629d80a3e2?anonymousKey=5d24d2f3b08504e640e53f520cd531d047e830f2) |
 | `L-MS-7` | Those rules take typed CVL arguments rather than `calldataarg`, so they quantify over canonically decodable tuples, the MultiSend instance of L-POL-6, L-POL-9 and L-POL-12 | job [4aa94063](https://prover.certora.com/output/950385/4aa940637688463292e6f5fbea2b6afa?anonymousKey=3b67cf96d9c2b63c72edd763b4bbc9f4c4734284) |
 | `L-MS-8` | Exact bit-vector modelling for the two MultiSendPolicy scenes, the MultiSend instance of L-W0-BITWISE, L-POL-3 and L-POL-14 | job [4aa94063](https://prover.certora.com/output/950385/4aa940637688463292e6f5fbea2b6afa?anonymousKey=3b67cf96d9c2b63c72edd763b4bbc9f4c4734284) |
 | `L-MS-9` | The three decoders of `P/MultiSendPolicy:45-89` are characterised in raw-byte-reader vocabulary, meaning offsets, length words and byte content, rather than in the vocabulary of the harness walkers that call those same decoders | job [4aa94063](https://prover.certora.com/output/950385/4aa940637688463292e6f5fbea2b6afa?anonymousKey=3b67cf96d9c2b63c72edd763b4bbc9f4c4734284) |
+| `W-MS-1` | a two-item batch clearing with both contexts, a one-item batch, an empty batch, and the two-item batch against the real recording callee | witness row |
 | `WAIVED-H-7` | Nested MultiSend batches, at any depth; batches beyond 3 items | waived: bounds asserted pessimistically: the 3-item bound is asserted (L-MS-2), never assumed. No rule of this tree expands a nested batch (section 7) |
 
 ## Evidence rules
