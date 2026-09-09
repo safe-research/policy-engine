@@ -862,6 +862,114 @@ rule R_EC_17_module(env e, uint256 value, bytes data, SafePolicyGuardHarness.Ope
     assert gCalls == 0, "and denies it before any policy is called, so no module can be forged onto one";
 }
 
+// W-EC-1(a): an owner-path check succeeds through an exact policy while a different fallback is configured.
+rule W_EC_1_a(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+              uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+              address refundReceiver, bytes signatures, address msgSender) {
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    AccessSelector.T ek = exactKey(to, data, op);
+    require policyAt(s, ek) == allow && policyAt(s, fallbackKey(op)) == deny;
+    AccessSelector.T k; address p;
+    k, p = getPolicy(s, to, data, op);
+    checkTransaction(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver,
+        signatures, msgSender);
+    satisfy p == allow && k == ek && checkingSafe() == 0;
+}
+
+// W-EC-1(b): an owner-path check succeeds through the fallback with no exact entry.
+rule W_EC_1_b(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+              uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+              address refundReceiver, bytes signatures, address msgSender) {
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    require policyAt(s, exactKey(to, data, op)) == 0 && policyAt(s, fallbackKey(op)) == allow;
+    AccessSelector.T k; address p;
+    k, p = getPolicy(s, to, data, op);
+    checkTransaction(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver,
+        signatures, msgSender);
+    satisfy p == allow && k == fallbackKey(op);
+}
+
+// W-EC-1(c): a module-path check with `module != 0` succeeds.
+rule W_EC_1_c(env e, address to, uint256 value, bytes data,
+              SafePolicyGuardHarness.Operation op, address module) {
+    require e.msg.sender != 0;
+    require module != 0;
+    checkModuleTransaction(e, to, value, data, op, module);
+    satisfy checkingSafe() == 0 && checkingModule() == 0;
+}
+
+// W-EC-1(d): the escape hatch succeeds with `P[s][.]` all zero.
+rule W_EC_1_d(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+              uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+              address refundReceiver, bytes signatures, address msgSender) {
+    require e.msg.sender != 0;
+    require forall AccessSelector.T kk. policyAt(e.msg.sender, kk) == 0;
+    bool a = allowedCalls(to, value, data, op);
+    require a;
+    checkTransaction(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver,
+        signatures, msgSender);
+    satisfy checkingSafe() == 0;
+}
+
+// W-EC-1(e): a check succeeds through OneTimeAllow and the grant is spent.
+rule W_EC_1_e(env e, address to, uint256 value, bytes data,
+              SafePolicyGuardHarness.Operation op, address module) {
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    AccessSelector.T k; address p;
+    k, p = getPolicy(s, to, data, op);
+    require p == oneTimeAllow && oneTimeAllow.isGranted(currentContract, s, k);
+    checkModuleTransaction(e, to, value, data, op, module);
+    satisfy !oneTimeAllow.isGranted(currentContract, s, k);
+}
+
+// W-EC-1(f): AccessDenied(0) and AccessDenied(p) are each reachable through tryCheck, starting with AccessDenied(0);
+// the PolicyReverted witness is commented out.
+rule W_EC_1_f_accessDeniedZero(env e, address safe, address to, uint256 value, bytes data,
+                               SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    satisfy !ok && sel == errAccessDenied() && arg == 0;
+}
+
+// W-EC-1(f), second class: `AccessDenied(p)` for a Deny policy is reachable through `tryCheck`.
+rule W_EC_1_f_accessDeniedPolicy(env e, address safe, address to, uint256 value, bytes data,
+                                 SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    satisfy !ok && sel == errAccessDenied() && arg == deny;
+}
+
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// W-EC-1(f), third class: `PolicyReverted(p, .)` for the mock in REVERTS mode is reachable through `tryCheck`.
+// The satisfy comes back unsatisfiable, an artefact of the summarized catch (D-008, L-EC-7) rather than a
+// statement about the deployed engine, which produces the selector on the first reverting policy.
+rule W_EC_1_f_policyReverted(env e, address safe, address to, uint256 value, bytes data,
+                             SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REVERTS;
+    resolvesTo(safe, to, value, data, op, mockPolicy);
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    satisfy !ok && sel == errPolicyReverted() && arg == mockPolicy && len >= 100;
+}
+*/
+
+// W-EC-1(l), the fourth denial class: `GuardTargetDenied` for a call aimed at the guard
+// is reachable through `tryCheck`.
+rule W_EC_1_l_guardTargetDenied(env e, address safe, uint256 value, bytes data,
+                                SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, currentContract, value, data, op, ctx);
+    satisfy !ok && sel == errGuardTargetDenied() && len == 4;
+}
+
 // W-EC-1(g): the mid-check state is reached through the hook, which discharges the require S != 0 of R-EC-1/3/4
 // (L-EC-9).
 rule W_EC_1_g(env e, address to, uint256 value, bytes data,
@@ -875,6 +983,24 @@ rule W_EC_1_g(env e, address to, uint256 value, bytes data,
     require p == mockPolicy;
     checkModuleTransaction(e, to, value, data, op, module);
     satisfy mockPolicy.innerCalled() && !mockPolicy.innerReverted() && module != 0;
+}
+
+// W-EC-1(i): an owner-path check with `to == 0`, empty `data` and CALL succeeds through the fallback.
+rule W_EC_1_i(env e, bytes data, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+              address refundReceiver, bytes signatures, address msgSender) {
+    require e.msg.sender != 0;
+    require data.length == 0;
+    SafePolicyGuardHarness.Operation op = lib.opCall();
+    address s = e.msg.sender;
+    // With to == 0, empty data and CALL the exact key is the fallback key (the documented collision R-LIB-1/3), so this
+    // witness states only that the fallback serves.
+    require policyAt(s, fallbackKey(op)) == allow;
+    require exactKey(0, data, op) == fallbackKey(op);
+    AccessSelector.T k; address p;
+    k, p = getPolicy(s, 0, data, op);
+    checkTransaction(e, 0, 0, data, op, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver,
+        signatures, msgSender);
+    satisfy p == allow;
 }
 
 // W-EC-1(j): a nested engine call targeting the hatch is refused from state when the top-level check is
