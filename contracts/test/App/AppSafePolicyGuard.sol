@@ -48,8 +48,9 @@ contract AppSafePolicyGuard is SafePolicyGuard {
 
     /**
      * @param delay The delay for the configuration change.
+     * @param expiry The time upper bound for applying the configuration change.
      */
-    constructor(uint256 delay) SafePolicyGuard(delay) {}
+    constructor(uint256 delay, uint256 expiry) SafePolicyGuard(delay, expiry) {}
 
     /**
      * @dev TODO: Consider the security considerations of calling `checkTransaction` as a Safe transaction,

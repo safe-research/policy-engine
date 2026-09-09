@@ -39,6 +39,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     uint256 public immutable DELAY;
 
     /**
+     * @notice How long a matured configuration change stays applicable for.
+     */
+    uint256 public immutable EXPIRY;
+
+    /**
      * @dev `keccak256("guard_manager.guard.address")` — Safe's `GuardManager.GUARD_STORAGE_SLOT`.
      */
     bytes32 private constant _GUARD_STORAGE_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
@@ -60,6 +65,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @notice The pending policies root for a Safe.
      * @dev The mapping is structured as follows:
      *      safe address where policies are pending => configuration root => timestamp when policy can be confirmed.
+     *      A root stays applicable for a further {EXPIRY} past that timestamp; see {_expired}.
      */
     mapping(address => mapping(bytes32 => uint256)) public rootConfigured;
 
@@ -91,6 +97,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     error RootConfigurationPending();
 
     /**
+     * @notice Error indicating the policy root configuration is past its application window.
+     */
+    error RootConfigurationExpired();
+
+    /**
      * @notice Error indicating this contract is already installed as a guard on the caller.
      */
     error GuardAlreadyEnabled();
@@ -104,6 +115,11 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @notice Error indicating the guarded module transaction failed to execute.
      */
     error ModuleExecutionFailed();
+
+    /**
+     * @notice Error indicating the constructor was given a zero expiry, which nothing could satisfy.
+     */
+    error ZeroExpiryNotAllowed();
 
     /**
      * @notice Emitted when a policy root is configured.
@@ -129,9 +145,13 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
 
     /**
      * @param delay The delay for the configuration change.
+     * @param expiry How long a matured configuration change stays applicable for. Zero is rejected,
+     *        since it would leave an empty window that no call could ever fall inside.
      */
-    constructor(uint256 delay) {
+    constructor(uint256 delay, uint256 expiry) {
+        require(expiry > 0, ZeroExpiryNotAllowed());
         DELAY = delay;
+        EXPIRY = expiry;
     }
 
     /**
@@ -301,6 +321,16 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
     }
 
     /**
+     * @notice Whether a request that matured at `validFrom` is past its application window.
+     * @dev A matured root stays applicable for {EXPIRY} and is then dead, so a root requested
+     *      during a past compromise cannot be held in reserve and applied instantly later.
+     *      Independent of {DELAY}: a guard with no waiting period still expires its requests.
+     */
+    function _expired(uint256 validFrom) private view returns (bool) {
+        return block.timestamp >= validFrom + EXPIRY;
+    }
+
+    /**
      * @notice Configures and confirms multiple policies for an address, bypassing the delay.
      * @param configurations The array of configurations to be applied.
      * @dev Only usable before this contract is installed as a guard, which is what keeps the delay
@@ -329,7 +359,10 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @dev This can be used to set multiple policies at once.
      */
     function requestConfiguration(bytes32 configureRoot) external virtual {
-        require(rootConfigured[msg.sender][configureRoot] == 0, RootAlreadyConfigured(configureRoot));
+        uint256 validFrom = rootConfigured[msg.sender][configureRoot];
+        // An expired request is spent, so the same root may be requested afresh without having to
+        // be invalidated first.
+        require(validFrom == 0 || _expired(validFrom), RootAlreadyConfigured(configureRoot));
         rootConfigured[msg.sender][configureRoot] = block.timestamp + DELAY;
         emit RootConfigured(msg.sender, configureRoot, block.timestamp + DELAY);
     }
@@ -355,8 +388,10 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      */
     function applyConfiguration(Configuration[] calldata configurations) external virtual {
         bytes32 configureRoot = keccak256(abi.encode(configurations));
-        require(rootConfigured[msg.sender][configureRoot] != 0, RootNotConfigured(configureRoot));
-        require(block.timestamp >= rootConfigured[msg.sender][configureRoot], RootConfigurationPending());
+        uint256 validFrom = rootConfigured[msg.sender][configureRoot];
+        require(validFrom != 0, RootNotConfigured(configureRoot));
+        require(block.timestamp >= validFrom, RootConfigurationPending());
+        require(!_expired(validFrom), RootConfigurationExpired());
         delete rootConfigured[msg.sender][configureRoot];
         emit RootApplied(msg.sender, configureRoot);
         for (uint256 i = 0; i < configurations.length; i++) {

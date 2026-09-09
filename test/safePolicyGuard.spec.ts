@@ -3,6 +3,7 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
+import { SEVEN_DAYS_IN_SECONDS } from '../lib/constants'
 import {
   buildMultiSendSafeTx,
   buildSafeTransaction,
@@ -22,6 +23,22 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
     it('Should set the delay', async function () {
       const { safePolicyGuard, delay } = await loadFixture(fixture)
       expect(await safePolicyGuard.DELAY()).to.equal(delay)
+    })
+
+    it('Should set the expiry independently of the delay', async function () {
+      const { safePolicyGuard, delay, expiry } = await loadFixture(fixture)
+      expect(await safePolicyGuard.EXPIRY()).to.equal(expiry)
+      // Distinct values, so a transposition of the two arguments would be visible here.
+      expect(await safePolicyGuard.EXPIRY()).to.not.equal(delay)
+    })
+
+    it('Should reject a zero expiry', async function () {
+      // A zero window is empty, so no call could ever fall inside it.
+      const factory = await ethers.getContractFactory('SafePolicyGuard')
+      await expect(factory.deploy(SEVEN_DAYS_IN_SECONDS, 0n)).to.be.revertedWithCustomError(
+        factory,
+        'ZeroExpiryNotAllowed'
+      )
     })
   })
 

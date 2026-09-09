@@ -13,7 +13,7 @@ export async function safePolicyGuardFixture() {
 
   const {
     safePolicyGuard,
-    options: { delay }
+    options: { delay, expiry }
   } = await deploySafePolicyGuard()
 
   const { safeProxyFactory, safe: safeSingleton } = await deploySafeContracts()
@@ -29,5 +29,5 @@ export async function safePolicyGuardFixture() {
 
   const accessSelector = await (await ethers.getContractFactory('TestAccessSelector')).deploy()
 
-  return { owner, other, safePolicyGuard, safe, delay, mockPolicy, accessSelector }
+  return { owner, other, safePolicyGuard, safe, delay, expiry, mockPolicy, accessSelector }
 }
