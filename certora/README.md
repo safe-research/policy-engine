@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-66 of 66 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+73 of 73 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,15 +21,15 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 36 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 37 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 17 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 36 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
-| `certora/harnesses/` | 7 files, 8 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `ERC20ApprovePolicyHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
+| `certora/specs/` | 18 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
+| `certora/conf/` | 37 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/harnesses/` | 7 files, 9 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
 | `certora/VERIFICATION_REPORT.md` | Results, property table, assumption table, findings, not-proven list. |
@@ -45,7 +45,7 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 24 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 36 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 37 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -221,20 +221,26 @@ The grant rollback behind `R-OTA-2` is tested in `test/safePolicyGuardExecution.
 
 | conf | spec | rules | status |
 |---|---|---|---|
+| `ERC20Transfer.conf` | `ERC20Transfer.spec` | 17 | `R-ERC20T-1` to `R-ERC20T-6`, `W-ERC20T-1` green |
 | `ERC20Approve.conf` | `ERC20Approve.spec` | 17 | `R-ERC20A-1` to `R-ERC20A-6`, `W-ERC20A-1` green |
 
 Tests: `test/erc20ApprovePolicy.spec.ts`, two cases: the decoder boundary behind `R-ERC20A-2` and the spender-list walk.
+
+Tests: `test/erc20TransferPolicy.spec.ts`, two cases: the decoder boundary behind `R-ERC20T-2` and the recipient-list walk.
+
+The two list walks stand behind `WAIVED-S-3`.
 
 #### Ids introduced here
 
 | id | claim | discharge |
 |---|---|---|
-| `L-POL-1` | `configure`'s allowlist array is bounded to `loop_iter` (3) entries, and the frame rows do not run `configure` or the entry readers on unbounded calldata at all |  |
-| `L-POL-11` | Each policy's decoder characterisation (`R_ERC20A_2`) and its `configure` key-shape iff are stated in the raw-reader vocabulary rather than in a CVL re-implementation of `abi.decode` or of the `AccessSelector` bit layout | argument |
-| `L-POL-12` | Those rules take typed CVL arguments instead of `calldataarg`, so they quantify over canonically decodable tuples, the PolERC20 instance of L-POL-6 and L-POL-9 |  |
-| `L-POL-13` | The unit's instance of L-W0-HASH and of the loop template keys: executions hashing a `bytes` longer than 3200 bytes are dropped, and the decoded array is unrolled to 3 entries. The hashing bound is inert here, neither policy nor either spec hashing a variable-length value; the unrolling is not, and L-POL-1 states it |  |
-| `L-POL-14` | Exact bitvector modelling for both PolERC20 scenes, the PolERC20 instance of L-W0-BITWISE, L-POL-3, L-POL-7 and L-POL-10 |  |
+| `L-POL-1` | `configure`'s allowlist array is bounded to `loop_iter` (3) entries, and the frame rows do not run `configure` or the entry readers on unbounded calldata at all | job [40612834](https://prover.certora.com/output/950385/406128341b9a485094aec874f73e9ef6?anonymousKey=350a7a4cf11fff9aa0f877b930873948c7f7cc35) |
+| `L-POL-11` | Each policy's decoder characterisation (`R_ERC20A_2` and `R_ERC20T_2`) and its `configure` key-shape iff are stated in the raw-reader vocabulary rather than in a CVL re-implementation of `abi.decode` or of the `AccessSelector` bit layout | argument |
+| `L-POL-12` | Those rules take typed CVL arguments instead of `calldataarg`, so they quantify over canonically decodable tuples, the PolERC20 instance of L-POL-6 and L-POL-9 | job [40612834](https://prover.certora.com/output/950385/406128341b9a485094aec874f73e9ef6?anonymousKey=350a7a4cf11fff9aa0f877b930873948c7f7cc35) |
+| `L-POL-13` | The unit's instance of L-W0-HASH and of the loop template keys: executions hashing a `bytes` longer than 3200 bytes are dropped, and the decoded array is unrolled to 3 entries. The hashing bound is inert here, neither policy nor either spec hashing a variable-length value; the unrolling is not, and L-POL-1 states it | job [40612834](https://prover.certora.com/output/950385/406128341b9a485094aec874f73e9ef6?anonymousKey=350a7a4cf11fff9aa0f877b930873948c7f7cc35) |
+| `L-POL-14` | Exact bitvector modelling for both PolERC20 scenes, the PolERC20 instance of L-W0-BITWISE, L-POL-3, L-POL-7 and L-POL-10 | job [40612834](https://prover.certora.com/output/950385/406128341b9a485094aec874f73e9ef6?anonymousKey=350a7a4cf11fff9aa0f877b930873948c7f7cc35) |
 | `W-ERC20A-1` | success with a non-zero amount, success with a zero amount, a storage-changing success, configure-then-approve, and last-entry-wins | witness row |
+| `W-ERC20T-1` | success via `transfer` and via `transferFrom`, a storage-changing success, configure-then-check, and last-entry-wins | witness row |
 | `WAIVED-S-6` | Detaching a policy (`policy = 0`, no `configure` call, `E:291`) does not clear policy-side state; re-attaching resurrects old ERC20 entries, AMOD entries and unspent OTA grants | waived: cross-contract history; frames on both sides hold, neither states the composition; section 7 |
 
 ## Evidence rules

@@ -4,6 +4,7 @@
  * `hashing_length_bound` of each conf that uses it; the importing spec states how. */
 
 definition SEL_TRANSFER() returns bytes4 = to_bytes4(0xa9059cbb);
+definition SEL_TRANSFER_FROM() returns bytes4 = to_bytes4(0x23b872dd);
 definition SEL_APPROVE() returns bytes4 = to_bytes4(0x095ea7b3);
 
 // `_decodeSelector` reverts `InvalidSelector` for 1-3 bytes (PolicyEngine.sol:247-255).
