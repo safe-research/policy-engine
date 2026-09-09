@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-54 of 54 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+59 of 59 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,14 +21,14 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 34 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 35 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 15 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 34 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/specs/` | 16 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
+| `certora/conf/` | 35 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
 | `certora/harnesses/` | 6 files, 7 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
@@ -45,7 +45,7 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 24 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 34 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 35 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -186,10 +186,13 @@ The same cases stand behind `WAIVED-S-4`.
 | `DenyWitness.conf` | `Deny.spec` | 1 | `W-DENY-1` green |
 | `NativeTransfer.conf` | `NativeTransfer.spec` | 7 | `R-NATIVE-1`, `R-NATIVE-2`, `W-NATIVE-1` green |
 | `OneTimeAllow.conf` | `OneTimeAllow.spec` | 12 | `R-OTA-1` to `R-OTA-5`, `W-OTA-1` green; `R-OTA-3`'s independence from `data` rests on L-POL-CTX, whose measurement did not cover the data buffers |
+| `AllowedModule.conf` | `AllowedModule.spec` | 11 | `R-AMOD-1` to `R-AMOD-3`, `INV-AMOD-1`, `W-AMOD-1` green; `R-AMOD-1`'s independence from `data` rests on L-POL-CTX, whose measurement did not cover the data buffers |
 
 Tests: `test/nativeTransferPolicy.spec.ts`, the op-mask case behind `R-NATIVE-2`.
 
 Tests: `test/oneTimeAllowPolicy.spec.ts`, one decoder case, for the boundary behind `R-OTA-4`.
+
+Tests: `test/allowedModulePolicy.spec.ts`, one decoder case, for the boundary behind `R-AMOD-2`.
 
 The grant rollback behind `R-OTA-2` is tested in `test/safePolicyGuardExecution.spec.ts`, among the EngineCheck unit's cases.
 
@@ -197,16 +200,19 @@ The grant rollback behind `R-OTA-2` is tested in `test/safePolicyGuardExecution.
 
 | id | claim | discharge |
 |---|---|---|
+| `B-6` | AllowedModulePolicy ignores `access`: the allowlist is keyed per `(guard, safe, module)`; `configure` ignores `access`. Unchanged on `main` | documentation finding, open |
 | `L-POL-2` | The companion rule's four access words are pinned to concrete non-canonical instances: 2^217, 2^200, 2^216 and 2^224 | job [7a510af2](https://prover.certora.com/output/950385/7a510af231a74154bc9259278e5e32b7?anonymousKey=875075a643c737e76b16e6f1ba72aab875c66182) |
 | `L-POL-3` | Exact bitvector modelling for the NativeTransfer scene | job [7a510af2](https://prover.certora.com/output/950385/7a510af231a74154bc9259278e5e32b7?anonymousKey=875075a643c737e76b16e6f1ba72aab875c66182) |
-| `L-POL-5` | The decode characterisations of `R_OTA_4` are stated in the raw-reader vocabulary rather than in a re-implementation of `abi.decode` | job [772d811a](https://prover.certora.com/output/950385/772d811a12c2438fb997f1bab37458bd?anonymousKey=63f6e9088b09a47ce78b016f567b982e4d2431af) |
+| `L-POL-4` | The loop and hashing template keys carried into the OneTimeAllow and AllowedModule confs | job [772d811a](https://prover.certora.com/output/950385/772d811a12c2438fb997f1bab37458bd?anonymousKey=63f6e9088b09a47ce78b016f567b982e4d2431af) |
+| `L-POL-5` | The decode characterisations of `R_OTA_4` and `R_AMOD_2` are stated in the raw-reader vocabulary rather than in a re-implementation of `abi.decode` | job [772d811a](https://prover.certora.com/output/950385/772d811a12c2438fb997f1bab37458bd?anonymousKey=63f6e9088b09a47ce78b016f567b982e4d2431af) |
 | `L-POL-6` | The typed revert-iff rules `R_ALLOW_1`, `R_DENY_1`, `R_NATIVE_1` and `R_NATIVE_2` range over canonical ABI encodings of the parameter tuple, not raw calldata, which `calldataarg` widens to encodings solc's decoder rejects; their `_anyCalldata` twins take the raw domain | argument |
 | `L-POL-7` | Exact bitvector modelling for every `satisfy` rule in the unit, with the `assert` rules left on the default encoding in `Allow.conf` and `Deny.conf` | job [1dad762d](https://prover.certora.com/output/950385/1dad762d6a0d410b963792b88e971a5b?anonymousKey=005f8d141665d81eeabd2cc51d814e80d9d1e997) |
 | `L-POL-8` | Per-unit instance of L-W0-HASH and the loop template keys: executions hashing a `bytes` longer than 3200 bytes are dropped. The bound is inert in this unit, no policy it verifies and no rule of its specs hashing a variable-length value, so the revert-iff rows hold at every calldata length | job [982fe202](https://prover.certora.com/output/950385/982fe20275cc42a594f7bcf1c4edc770?anonymousKey=a4a2e30026bd3e8512daeb011d79ad84ff36578a) |
-| `L-POL-9` | The typed-argument rules of `OneTimeAllow.spec` take CVL arguments instead of `calldataarg`, so they quantify over canonically decodable tuples, the OneTimeAllow and AllowedModule instance of L-POL-6 | job [772d811a](https://prover.certora.com/output/950385/772d811a12c2438fb997f1bab37458bd?anonymousKey=63f6e9088b09a47ce78b016f567b982e4d2431af) |
+| `L-POL-9` | The typed-argument rules of `OneTimeAllow.spec` and `AllowedModule.spec` take CVL arguments instead of `calldataarg`, so they quantify over canonically decodable tuples, the OneTimeAllow and AllowedModule instance of L-POL-6 | job [772d811a](https://prover.certora.com/output/950385/772d811a12c2438fb997f1bab37458bd?anonymousKey=63f6e9088b09a47ce78b016f567b982e4d2431af) |
 | `L-POL-10` | Exact bitvector modelling for both grant-policy scenes, the OneTimeAllow and AllowedModule instance of L-W0-BITWISE and of the stateless-policy entries L-POL-3 and L-POL-7 | job [772d811a](https://prover.certora.com/output/950385/772d811a12c2438fb997f1bab37458bd?anonymousKey=63f6e9088b09a47ce78b016f567b982e4d2431af) |
 | `L-POL-CTX` | A prover unsoundness, a property of the prover rather than of the files that cite it: under `precise_bitwise_ops: true` on 8.19.1 the `assert` model reaches no empty free CVL `bytes`, so an `assert` rule with two or more free `bytes` and any external call drops every input pair in which exactly one buffer is empty. Every rule of that shape under the flag is exposed, whether or not its own file cites this id. With the flag off that model is sound for an `assert` and unsound for a `satisfy` instead. L-POL-CTX-M measures every rule of this tree this row left unmeasured | jobs [3d8e8b7d](https://prover.certora.com/output/950385/3d8e8b7d8e6b41fda867803650d85612?anonymousKey=43ce95db540589b67809b8e12a7317721f9d0f7e), [df18bce5](https://prover.certora.com/output/950385/df18bce53b94438bae9eee4e6c683397?anonymousKey=892b22949ff9972fff04b6d5f24e394705d7732f), whose confs are not part of this tree, so the jobs cannot be re-run from it |
 | `W-ALLOW-1` | a `checkTransaction` returning `MAGIC` with `value > 0`, `data.length >= 4`, `module != 0` | witness row |
+| `W-AMOD-1` | a check returning `MAGIC`, and configure-then-check under the same sender and a different access selector | witness row |
 | `W-DENY-1` | a non-reverting `checkTransaction` returning zero on the shape W-ALLOW-1 pins | witness row |
 | `W-NATIVE-1` | a check returning `MAGIC` with `value > 0`, and one on DELEGATECALL | witness row |
 | `W-OTA-1` | a check returning `MAGIC`, and two-step configure-then-check liveness | witness row |
