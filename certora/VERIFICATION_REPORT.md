@@ -4,13 +4,14 @@ Results, evidence and limits for the Certora suite under `certora/`. Job ids lin
 
 ## 1. Scope and units
 
-Verified sources: `SafePolicyGuard.sol` check path, `PolicyEngine.sol`; `SafePolicyGuard.sol` configuration path; `AccessSelector.sol`, `SignatureExtension.sol`; Safe v1.5.0, mocked. `contracts/` is byte-identical to `main`, the suite adding specs, confs and harnesses only.
+Verified sources: `SafePolicyGuard.sol` check path, `PolicyEngine.sol`; `SafePolicyGuard.sol` configuration path; `AccessSelector.sol`, `SignatureExtension.sol`; `AllowPolicy.sol`; Safe v1.5.0, mocked. `contracts/` is byte-identical to `main`, the suite adding specs, confs and harnesses only.
 
 | unit | subject | specs | confs |
 |---|---|---|---|
 | EngineCheck (EC) | `SafePolicyGuard.sol` check path, `PolicyEngine.sol` | `EngineCheck`, `EngineCheckFrame`, `EngineCheckHavoc`, `Common` | `EngineCheck`, `EngineCheckCall`, `EngineCheckClass`, `EngineCheckDelegate`, `EngineCheckDelegateApply`, `EngineCheckFrame`, `EngineCheckFrameApply`, `EngineCheckHavoc`, `EngineCheckInv`, `EngineCheckLaw`, `EngineCheckNested`, `EngineCheckNestedRecur`, `EngineCheckWitness` |
 | EngineConfig (CFG) | `SafePolicyGuard.sol` configuration path | `EngineConfig`, `EngineConfigGate`, `GuardSlotDecode`, `Common` | `EngineConfig`, `EngineConfigApply`, `EngineConfigEffects`, `EngineConfigFrame`, `EngineConfigFrameApply`, `EngineConfigFrameCheck`, `EngineConfigGate`, `EngineConfigLight`, `EngineConfigRoot`, `EngineConfigRootPin`, `GuardSlotDecode` |
 | Lib (LIB) | `AccessSelector.sol`, `SignatureExtension.sol` | `Lib` | `Lib`, `LibBitwise` |
+| Allow (ALLOW) | `AllowPolicy.sol` | `Allow` | `Allow` |
 | shared | Safe v1.5.0, mocked | `SafeMock` | `SafeMock` |
 
 Harnesses: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`: 6 files, 7 contracts. Repo tests: `test/*.spec.ts`, run by `npm test`.
@@ -19,10 +20,10 @@ Harnesses: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMoc
 
 | | |
 |---|---|
-| Green properties | 40 of 40: 30 unqualified, 10 qualified in the status cell |
+| Green properties | 41 of 41: 31 unqualified, 10 qualified in the status cell |
 | Blocked on prover limits | none |
 | Waived with measured evidence | 0 |
-| Confs and their jobs | 27 confs, each row citing a graded job: 27 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
+| Confs and their jobs | 28 confs, each row citing a graded job: 28 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
 | Repo tests | 184 passing, the `npm test` summary line (section 8) |
 
 ## 3. Property table
@@ -71,6 +72,7 @@ One row per property, `status` as recorded; `job` is the graded job whose rule-n
 | `R-LIB-7` | Envelope detection and `_decodeContext` composition, fail closed | `R_LIB_7` | `Lib.conf` | green | [8a1d1edd](https://prover.certora.com/output/950385/8a1d1eddd41345778af248e6fa9eba50?anonymousKey=292eef4663347ae41630fe1e5380fd77a5587659)  |
 | `R-LIB-8` | Selector content of a key | `R_LIB_8` | `LibBitwise.conf` | green, the selector's trailing three bytes tied to the word reader only (`L-LIB-4`) | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
 | `W-LIB-1` | Witnesses for the library readers | `W_LIB_1_envelope`<br>`W_LIB_1_selector` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
+| `R-ALLOW-1` | `checkTransaction` reverts iff `msg.value != 0`, else returns `MAGIC`, for every argument and sender | `R_ALLOW_1`<br>`R_ALLOW_1_anyCalldata` | `Allow.conf` | green | [982fe202](https://prover.certora.com/output/950385/982fe20275cc42a594f7bcf1c4edc770?anonymousKey=a4a2e30026bd3e8512daeb011d79ad84ff36578a)  |
 
 (a) `EngineCheckFrame.conf` is the conf `R-EC-1` names, and it converges at this tree: job [2dd4b861](https://prover.certora.com/output/950385/2dd4b861a0a54b1983c0ec332ad54922?anonymousKey=8d5176b22e20ef13070fd1b9093091702cb68190), every leaf SUCCESS, which is the job the row cites. `EngineCheckFrameApply.conf` is the scoped variant that remains.
 
@@ -153,6 +155,8 @@ One id of the series is retired, proven rather than waived, and is not counted a
 | `L-EC-FRAME` | `specs/EngineCheck.spec`, `specs/EngineCheckFrame.spec`, `specs/EngineCheckHavoc.spec` | Opcode-hook counters, zeroed by `resetFrame()`; no `Sstore`/`Sload` hook anywhere in the unit | job [2ba73a89](https://prover.certora.com/output/950385/2ba73a89cfee41ca996ea316c7e1b629?anonymousKey=334be8203f48951c877040d7bf9fb59a862a35ff) |
 | `L-EC-LOOP-N1` | `conf/EngineCheckFrameApply.conf`, `conf/EngineCheckDelegateApply.conf` | The `applyConfiguration` node of three parametric rules is proven at `n <= 1` instead of the unit's `n <= 3`. | job [bb0c7c8d](https://prover.certora.com/output/950385/bb0c7c8dade241bb944ba92f66179293?anonymousKey=7eaa9adb5293202d3b94a64ae7ba8a69c00c7919) |
 | `L-EC-INVFILTER` | applies at `R_EC_1`, the sentinel frame rule; defined here | The parametric quantification of `R_EC_1` omits the two pre-execution hooks, which `R_EC_2` proves revert from `S != 0` | job [2dd4b861](https://prover.certora.com/output/950385/2dd4b861a0a54b1983c0ec332ad54922?anonymousKey=8d5176b22e20ef13070fd1b9093091702cb68190) |
+| `L-POL-6` | `specs/Allow.spec` | The typed revert-iff rules `R_ALLOW_1` range over canonical ABI encodings of the parameter tuple, not raw calldata, which `calldataarg` widens to encodings solc's decoder rejects; their `_anyCalldata` twins take the raw domain. | argument |
+| `L-POL-8` | `conf/Allow.conf` | Per-unit instance of L-W0-HASH and the loop template keys: executions hashing a `bytes` longer than 3200 bytes are dropped. The bound is inert in this unit, no policy it verifies and no rule of its specs hashing a variable-length value, so the revert-iff rows hold at every calldata length. | job [982fe202](https://prover.certora.com/output/950385/982fe20275cc42a594f7bcf1c4edc770?anonymousKey=a4a2e30026bd3e8512daeb011d79ad84ff36578a) |
 | `L-IT-2` | `specs/SafeMock.spec`, `conf/SafeMock.conf` | The Safe in scene is set up: `1 <= threshold <= ownerCount`, an invariant against the mock, whose only writer `SafeMockHarness.setOwnersAndThreshold` requires it, and a precondition of the rules that put Safe v1.5.0 in scene, whose own writers are `authorized` and therefore unreachable from a policy rule | job [335e2ef1](https://prover.certora.com/output/950385/335e2ef18dc6432faed47cebc7fcb542?anonymousKey=c2e1256ff0e44b4ecc333201615dc59d02e4e8c4) |
 | `L-IT-9` | `conf/SafeMock.conf`, `specs/SafeMock.spec` | An unknown Safe's owner list is a free array of at most four entries, in the three rules over an arbitrary `safe`; the rules over the Safe in scene assume nothing here, `getOwners()` there being Safe v1.5.0's own walk of its owner list. `SafeMock.conf`'s `ownersLengthIsOwnerCount` proves the same length fact against `SafeMockHarness`'s own body at up to three owners: a sanity check on the shape of the summary, not its discharge, since no IncreasedThreshold conf links the mock and the rules that read the summary run at four owners. |  |
 | `L-POL-CTX-M` | applies at `specs/EngineConfig.spec`; defined here | An audit of the exposure class: each rule the prover's empty-`bytes` pair defect leaves unmeasured is probed in three emptiness cases (`context` empty, `data` empty, both), 75 probes verdicting 69 SUCCESS, 6 vacuous and 0 FAIL, the vacuous ones being empty-`data` probes of rules whose antecedents need `batchLength(data)` to decode; the `configureImmediately` effects rule is covered instead by four pinned cases with the flag off, all SUCCESS. An exposed rule that carries a companion pinning `context1.length == 0` is answered by that companion rather than by a probe, so the `data1`/`data2` pair of such an independence rule is unmeasured. | argument: the enumeration's 75 probe jobs, not linked here, whose confs are not part of this tree, and job [a1318175](https://prover.certora.com/output/950385/a1318175b20042e88501662982d419fd?anonymousKey=153d0f62ccc55542b1c2b75aa3b53ef0b5365c45) for the four pinned cases, whose conf is not part of this tree, so the job cannot be re-run from it |
@@ -214,6 +218,6 @@ One conf of this tree is merged from scoped confs: `EngineConfigApply.conf` abso
 
 Merging the five EngineCheck confs into one conf was measured by job [88090410](https://prover.certora.com/output/950385/88090410144342b8ade2326cf523bfd4?anonymousKey=6363413937abbb4e8c0e972a9a84ad00beaccca9), whose conf is not part of this tree, so the job cannot be re-run from it: 25 of its 26 rules kept the verdict their split conf had, but `R_EC_15` returned TIMEOUT where the split `EngineCheckCall.conf` proves it, so `EngineCheck.conf`, `EngineCheckCall.conf`, `EngineCheckClass.conf`, `EngineCheckNested.conf` and `EngineCheckWitness.conf` stand as five confs, each row citing the split conf's own job.
 
-Every one of the 27 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
+Every one of the 28 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
 
 The other jobs this report cites ran confs that are not part of this tree, and each citation says so; each such job stays readable through its link.
