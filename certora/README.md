@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-9 of 9 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+11 of 11 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,15 +21,15 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 1 of the 3 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 1 CVL spec. |
-| `certora/conf/` | 2 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
-| `certora/harnesses/` | 2 files, 2 contracts: `LibHarness`, `SafePolicyGuardHarness`. |
+| `certora/specs/` | 4 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. |
+| `certora/conf/` | 3 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/harnesses/` | 5 files, 6 contracts: `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
 | `certora/VERIFICATION_REPORT.md` | Results, property table, assumption table, findings, not-proven list. |
@@ -42,8 +42,10 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Rule ids | `R_<UNIT>_<n>` for safety rules, `INV_<UNIT>_<n>` for invariants, `W_<UNIT>_<n>` for `satisfy` witnesses and `*_PIN_*` for a row restated against a concrete callee; the report's rows use the same unit token with a hyphen, so `R-LIB-6` is carried by the `R_LIB_6*` rules. A row's rule cell names every rule that carries it, a rule named for what it proves rather than for a row id included. |
 | Id namespaces | `L-<UNIT>-<n>` and named forms such as `L-W0-HASH` for an assumption, `WAIVED-<UNIT>-<n>` for a waived claim, `B-<n>` for a documentation finding and `D-0<nn>` for a modelling decision; a `require`, summary, ghost or flag resting on one carries a trailing comment naming the id. |
 | Evidence | The job id in the report's property table is the authority for a row, and a conf's `rule` filter defines the rule set that job graded, so a rule outside the filter was not run by it. Where half a spec needs a different flag or budget, that spec is split across a conf pair and the unit table below names both confs; every other filter is a budget split within one unit. |
+| Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
+| Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 1 `EngineCheck*`/`EngineConfig*` conf of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | No conf raises `smt_timeout`: all 2 confs run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 1 of the 3 confs raises `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -69,6 +71,41 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | `L-W0-LOOP` | `loop_iter` is 3 in the shared scene: a configuration array is bounded to 3 entries where a rule carries one, and the calldata-to-memory copies of the library readers are unrolled 3 times where it does not | argument: optimistic_loop is false, so a bound too low fails an unwinding assertion rather than assuming the rest away |
 | `W-LIB-1` | Witnesses for the library readers | witness row |
 | `WAIVED-EC-2` | Selector content: `selectorOf(data)` equals the first four bytes of `data`, waived on the premise that CVL cannot index `bytes` | waived: the premise is false: `LibHarness.byteAt(bytes,uint256)` indexes `bytes` and is already used by R-LIB-6 and R-LIB-7. The claim is R-LIB-8 above, green in `LibBitwise.conf` |
+
+### EngineConfig
+
+| conf | spec | rules | status |
+|---|---|---|---|
+| `EngineConfig.conf` | `EngineConfig.spec` | 7 | green: `requestConfiguration` and `invalidateRoot` fully characterised (`R_CFG_4`, `R_CFG_5`); an expired root requestable again with no `invalidateRoot` in between (`R_CFG_12_reRequest`); witnesses of request then apply after the delay, of a re-request, of `DELAY == 0` and of the empty array (`W_CFG_1_W1`, `W_CFG_1_W2`, `W_CFG_1_W3`, `W_CFG_1_W6`) |
+
+Tests: `test/policyEngine.spec.ts`, 5 cases under `Policies with no usable return`.
+
+#### Ids introduced here
+
+| id | claim | discharge |
+|---|---|---|
+| `D-008` | An unresolved policy CALL defaults to `HAVOC_ECF` with nondeterministic return data, so "policy revert implies PolicyReverted" could be proven only against a really-reverting scene policy, and no rule of this tree proves it (section 7) | modelling decision |
+| `D-009` | Policy recursion is summarized per signature: `function _.checkTransaction(<8 args>) external => DISPATCH [...]` does inline the policy scene, and no second engine scene is built for a nested MultiSend batch, whose expansion this tree does not prove (section 7) | modelling decision |
+| `L-CFG-FRAME` | The opcode-hook observer ghosts start at zero | argument |
+| `L-CFG-GATE` | The `GuardAlreadyEnabled` iff is stated with an empty configuration array | argument |
+| `L-CFG-HASH` | Executions hashing a `bytes` value longer than the conf's own bound are dropped (assumed bound) | argument |
+| `L-CFG-LOOP` | Configuration arrays are bounded to 3 entries, a scope under-approximation at `G:344`, `G:397` and the `abi.encode` walk feeding `G:390` | argument |
+| `L-CFG-LOOP-N1` | These rules bound the configuration array to at most one entry instead of the unit's usual three: `W_CFG_1_W2` and `W_CFG_1_W3` | argument |
+| `L-CFG-PROBE` | Senders of the `GuardAlreadyEnabled` family are restricted to the two mocks, and the responder's answer length is bounded at 160 bytes | test/safePolicyGuardConfiguration.spec.ts |
+| `L-CFG-RECUR` | Re-entrant `configure`, the `MockPolicyHarness` `ConfigureMode.CALL_CONFIG` mode that calls one of the four configuration entry points on `msg.sender`, chosen by `configCall`, is modelled to one nested level with an asserted bound | argument |
+| `L-CFG-SCENE` | The iff halves are stated only where the scene fixes the `configure` verdict, `policy in {0, Allow, Deny, OneTimeAllow, MockPolicyHarness}`, and those rules pin the mock away from its re-entrant `CALL_CONFIG` mode | test/policyEngine.spec.ts: "Should reject configuring an account with no code as a policy" |
+| `L-CFG-SLOTMOCK` | The Safe answering the guard's slot probe in the `GuardAlreadyEnabled` family is `SafeSlotMock`, a Safe's observable answer with slot words in a mapping, and `SafeMockHarness` is out of that DISPATCH list | test/safePolicyGuardConfiguration.spec.ts |
+| `L-EC-6` | Re-entry through `MockPolicyHarness` is modelled to one nested dispatched frame, with an asserted bound |  |
+| `L-ENV-TIME` | Block timestamps are non-decreasing across transactions | argument |
+| `L-IT-2` | The Safe in scene is set up: `1 <= threshold <= ownerCount`, an invariant against the mock, whose only writer `SafeMockHarness.setOwnersAndThreshold` requires it, and a precondition of the rules that put Safe v1.5.0 in scene, whose own writers are `authorized` and therefore unreachable from a policy rule |  |
+| `L-POL-CTX-M` | An audit of the exposure class: each rule the prover's empty-`bytes` pair defect leaves unmeasured is probed in three emptiness cases (`context` empty, `data` empty, both), 75 probes verdicting 69 SUCCESS, 6 vacuous and 0 FAIL, the vacuous ones being empty-`data` probes of rules whose antecedents need `batchLength(data)` to decode; the `configureImmediately` effects rule is covered instead by four pinned cases with the flag off, all SUCCESS. An exposed rule that carries a companion pinning `context1.length == 0` is answered by that companion rather than by a probe, so the `data1`/`data2` pair of such an independence rule is unmeasured | job [a1318175](https://prover.certora.com/output/950385/a1318175b20042e88501662982d419fd?anonymousKey=153d0f62ccc55542b1c2b75aa3b53ef0b5365c45), whose conf is not part of this tree, so the job cannot be re-run from it |
+| `L-W0-1` | `SafeMockHarness` stands in for the Safe in the guard scenes, whose subject is the guard slot: `getStorageAt` (`StorageAccessible.sol:16-29`) and `getTransactionHash`/`domainSeparator` (`Safe.sol:389-399,404-473`) verbatim, guard values at the real keccak slots (`G:49,55-56`), `nonce`/`getOwners`/`getThreshold` as storage | argument: getStorageAt, getTransactionHash and domainSeparator are Safe v1.5.0's code copied verbatim |
+| `L-W0-2` | The closed scene {Allow, Deny, OneTimeAllow, MockPolicyHarness} stands in for arbitrary policy code on the check (`E:200`) and configure (`E:292`) paths, dispatched by the per-signature `DISPATCH [...]` summaries. Each spec sets its own `default` for a policy outside that list, and the two settings are not the same adversary: under `HAVOC_ECF` an out-of-scene policy may write storage and re-enter the guard's configuration entry points, under `NONDET` it is a side-effect-free function returning a free value, which can neither revert nor re-enter. The configuration specs set `HAVOC_ECF`; a check spec sets what its own header states | job [f2ef38dc](https://prover.certora.com/output/950385/f2ef38dc32074acca3ec5c6d381fd363?anonymousKey=ad922e5d6e6893f7d73eabdd601d93f7cf2cdc44) |
+| `L-W0-3` | The responder mock's per-slot modes cover every observable of `_readGuardSlot` (`G:311-320`): revert, short return and symbolic return words, with the rules over the answer's decode bounding `retLen <= 160` | test/safePolicyGuardConfiguration.spec.ts |
+| `L-W0-RECUR` | A method of the guard may appear at most twice on the call stack (guard, mock, guard, policy), and deeper cycles are cut by asserted pessimistic bounds rather than assumed away | job [f2ef38dc](https://prover.certora.com/output/950385/f2ef38dc32074acca3ec5c6d381fd363?anonymousKey=ad922e5d6e6893f7d73eabdd601d93f7cf2cdc44) |
+| `L-W0-SENDER` | `msg.sender` is never `address(0)` on chain: no key has that address and a contract cannot be deployed there | argument |
+| `WAIVED-ENV-3` | Timelock semantics for `DELAY == 0` deployments; validator timestamp skew | waived: environment; the `W_CFG_1_W3` witness covers `DELAY == 0` |
+| `WAIVED-H-5` | Equality of the mock `getTransactionHash` with a real Safe's | waived: environment code copied verbatim |
 
 ## Evidence rules
 
