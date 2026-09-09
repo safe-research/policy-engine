@@ -128,6 +128,140 @@ function wellFormedSig(bytes sg) returns bool {
     return to_mathint(lib.lengthWord(sg)) <= to_mathint(sg.length) - 64;
 }
 
+// The selector _decodeSelector yields where it does not revert, from the raw Lib reader selectorOf.
+function expectedSelector(bytes data) returns bytes4 {
+    if (data.length >= 4) {
+        return lib.selectorOf(data);
+    }
+    return to_bytes4(0);
+}
+
+// R-EC-11: allowed(to,value,data,op) reverts iff badLen(data), and is true iff the call is a zero-value CALL to the
+// guard carrying a hatch selector.
+rule R_EC_11(address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op) {
+    // The hatch selectors asserted against their literals, so a swap of two selectors fails here as well.
+    assert SEL_REQUEST_CONFIGURATION() == to_bytes4(0xa809eb8e), "requestConfiguration(bytes32) selector";
+    assert SEL_APPLY_CONFIGURATION() == to_bytes4(0xb9ba2798), "applyConfiguration(Configuration[]) selector";
+    assert SEL_INVALIDATE_ROOT() == to_bytes4(0x3eefdcce), "invalidateRoot(bytes32) selector";
+    assert SEL_CONFIGURE_IMMEDIATELY() == to_bytes4(0x8446dc43), "configureImmediately(Configuration[]) selector";
+
+    bool a = allowedCalls@withrevert(to, value, data, op);
+    bool rev = lastReverted;
+    assert rev <=> badLen(data), "allowedCalls reverts iff data is 1-3 bytes (InvalidSelector)";
+
+    bytes4 sel = expectedSelector(data);
+    bool onHatch = to == currentContract && value == 0 && op == lib.opCall()
+        && (sel == SEL_REQUEST_CONFIGURATION() || sel == SEL_APPLY_CONFIGURATION() || sel == SEL_INVALIDATE_ROOT());
+    assert !rev => (a <=> onHatch), "the hatch is exactly (this, 0, CALL, one of the three selectors)";
+
+    // The four named negatives of the row, each its own assert so a widening of the hatch names itself.
+    assert !rev => (sel == SEL_CONFIGURE_IMMEDIATELY() => !a), "configureImmediately is never on the hatch";
+    assert !rev => (data.length == 0 => !a), "empty calldata is never on the hatch";
+    assert !rev => (value != 0 => !a), "a value-carrying self-call is never on the hatch";
+    assert !rev => (op == lib.opDelegateCall() => !a), "a DELEGATECALL is never on the hatch";
+    assert !rev => (to != currentContract => !a), "only this contract is on the hatch";
+}
+
+// R-EC-9: getPolicy(s,to,data,op) reverts iff badLen(data).
+rule R_EC_9_revertIff(address s, address to, bytes data, SafePolicyGuardHarness.Operation op) {
+    AccessSelector.T k; address p;
+    k, p = getPolicy@withrevert(s, to, data, op);
+    assert lastReverted <=> badLen(data), "getPolicy reverts iff data is 1-3 bytes";
+}
+
+// R-EC-9: otherwise it returns the exact entry where one is set and the fallback entry otherwise, and the DELEGATECALL
+// fallback never serves a CALL.
+rule R_EC_9(address s, address to, bytes data, SafePolicyGuardHarness.Operation op) {
+    // The expectation is built from the Lib reader set, so no single change moves both sides at once.
+    bytes4 sel = expectedSelector(data);
+    AccessSelector.T ek = lib.create(to, sel, op);
+    AccessSelector.T fk = lib.createFallback(op);
+    address pe = policyAt(s, ek);
+    address pf = policyAt(s, fk);
+
+    AccessSelector.T k; address p;
+    k, p = getPolicy(s, to, data, op);
+
+    assert pe != 0 => (k == ek && p == pe), "an existing exact entry is served, exact-first";
+    assert pe == 0 => (k == fk && p == pf), "no exact entry falls back to the operation fallback";
+    assert data.length == 0 => k == (pe != 0 ? lib.create(to, to_bytes4(0), op) : fk),
+        "empty calldata resolves with selector 0";
+    assert lib.createFallback(lib.opCall()) != lib.createFallback(lib.opDelegateCall()),
+        "the CALL fallback key and the DELEGATECALL fallback key are distinct";
+    assert lib.getOperation(fk) == op, "the fallback key carries the operation bit";
+}
+
+// R-EC-10: a payload of at least 4 bytes with a zero selector resolves exactly as the empty payload (finding B-2,
+// intended).
+rule R_EC_10(address s, address to, bytes data, bytes empty, SafePolicyGuardHarness.Operation op) {
+    require data.length >= 4;
+    require empty.length == 0;
+    require lib.selectorOf(data) == to_bytes4(0);
+
+    AccessSelector.T k1; address p1;
+    AccessSelector.T k2; address p2;
+    k1, p1 = getPolicy(s, to, data, op);
+    k2, p2 = getPolicy(s, to, empty, op);
+    assert k1 == k2 && p1 == p2, "a zero-selector payload shares the empty-calldata key";
+}
+
+// R-EC-10, second half: a non-zero selector never lands on the zero-selector exact key, stated over the exact key
+// because create(0, 0, CALL) == createFallback(CALL) == 0 makes the resolved access ambiguous for to == 0.
+rule R_EC_10_exactKey(address to, bytes data, SafePolicyGuardHarness.Operation op) {
+    require data.length >= 4;
+    assert lib.selectorOf(data) != to_bytes4(0)
+        => lib.create(to, lib.selectorOf(data), op) != lib.create(to, to_bytes4(0), op),
+        "a non-zero selector never lands on the zero-selector key";
+}
+
+// R-EC-16: supportsInterface(id) is true iff id is one of the four ids, and never reverts.
+rule R_EC_16(env e, bytes4 id) {
+    bool r = supportsInterface@withrevert(e, id);
+    // The only revert source is solc's non-payable check; the row's claim is about the body.
+    assert lastReverted => e.msg.value != 0, "supportsInterface never reverts on its own";
+    assert !lastReverted => (r <=> (id == to_bytes4(0x04a9e3cd) || id == to_bytes4(0x58401ed8)
+        || id == to_bytes4(0xe6d7a83a) || id == to_bytes4(0x01ffc9a7))),
+        "true exactly for IPolicyEngine / ISafeModuleGuard / ISafeTransactionGuard / IERC165";
+}
+
+// R-EC-13: checkAfterExecution(hash, success) reverts iff !success or msg.value != 0, writes no storage and makes no
+// call.
+rule R_EC_13_owner(env e, bytes32 h, bool success) {
+    resetFrame();
+    storage init = lastStorage;
+    checkAfterExecution@withrevert(e, h, success);
+    bool rev = lastReverted;
+    assert rev <=> (!success || e.msg.value != 0), "checkAfterExecution reverts iff !success (ExecutionFailed)";
+    assert lastStorage == init, "the owner after-hook writes no storage";
+    assert gCalls == 0 && gDelegateCalls == 0 && gStatics == 0,
+        "the owner after-hook makes no outgoing call on any path";
+}
+
+// R-EC-13, the module twin: dropping that line burns a OneTimeAllow grant on a failed module transaction (WAIVED-S-4,
+// asserted on chain by test/safePolicyGuardExecution.spec.ts, "Should restore a one-time grant when the module
+// execution fails").
+rule R_EC_13_module(env e, bytes32 h, bool success) {
+    resetFrame();
+    storage init = lastStorage;
+    checkAfterModuleExecution@withrevert(e, h, success);
+    bool rev = lastReverted;
+    assert rev <=> (!success || e.msg.value != 0),
+        "checkAfterModuleExecution reverts iff !success (ModuleExecutionFailed)";
+    assert lastStorage == init, "the module after-hook writes no storage";
+    assert gCalls == 0 && gDelegateCalls == 0 && gStatics == 0,
+        "the module after-hook makes no outgoing call on any path";
+}
+
+// R-EC-2: a non-zero S makes both guard hooks revert for every argument vector and sender, before any policy call.
+rule R_EC_2(env e, method f, calldataarg args) filtered {
+    f -> f.selector == sig:checkTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,uint256,uint256,uint256,address,address,bytes,address).selector
+      || f.selector == sig:checkModuleTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,address).selector
+} {
+    require checkingSafe() != 0;
+    f@withrevert(e, args);
+    assert lastReverted, "a guard hook entered mid-check reverts (Reentrancy, PolicyEngine.sol:222)";
+}
+
 // R-EC-4(a): with S == s != 0, checkTransaction reverts iff it is paid, the safe differs, badLen(data), the hatch
 // is taken with m != 0, the target off the hatch is the guard itself, or the resolved policy is absent or does
 // not accept. The guard-target case is #103's own disjunct and it precedes resolution, so a call aimed here
@@ -157,6 +291,16 @@ rule R_EC_4a(env e, address safe, address to, uint256 value, bytes data,
 
     checkTransaction@withrevert(e, safe, to, value, data, op, ctx);
     assert lastReverted <=> expected, "engine revert iff (NotChecking is excluded by S != 0)";
+}
+
+// R-EC-4(a), the S == 0 limb, kept separate so it is asserted rather than assumed away; the filtered clause repeats the
+// excluded induction node's selector expression, so both range over the same (method, calldata) pairs.
+rule R_EC_4a_notChecking(env e, method f, calldataarg args) filtered {
+    f -> f.selector == sig:checkTransaction(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,bytes).selector
+} {
+    require checkingSafe() == 0;
+    f@withrevert(e, args);
+    assert lastReverted, "the engine entry reverts NotChecking when no check is in progress";
 }
 
 // R-EC-4(b): on success it returns address(0) on the hatch and p otherwise, and the policy is called exactly once iff

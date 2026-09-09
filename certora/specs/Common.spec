@@ -15,6 +15,13 @@ definition MAGIC() returns bytes4 = to_bytes4(
     sig:mockPolicy.checkTransaction(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,address,bytes,AccessSelector.T).selector
 );
 
+// Guard configuration entry points: the first three sit inside `_allowedCalls` (SafePolicyGuard.sol:186,192),
+// `configureImmediately` (:341) outside it.
+definition SEL_REQUEST_CONFIGURATION() returns bytes4 = to_bytes4(sig:requestConfiguration(bytes32).selector);
+definition SEL_APPLY_CONFIGURATION() returns bytes4 = to_bytes4(sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector);
+definition SEL_INVALIDATE_ROOT() returns bytes4 = to_bytes4(sig:invalidateRoot(bytes32).selector);
+definition SEL_CONFIGURE_IMMEDIATELY() returns bytes4 = to_bytes4(sig:configureImmediately(SafePolicyGuard.Configuration[]).selector);
+
 // `IPolicy.configure`, the one policy-decoded selector declared here.
 definition SEL_CONFIGURE() returns bytes4 = to_bytes4(0xda0b9a55);
 
