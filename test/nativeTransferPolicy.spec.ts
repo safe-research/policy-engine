@@ -173,4 +173,21 @@ describe('NativeTransferPolicy', function () {
       ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyConfigurationFailed')
     })
   })
+
+  describe('Access selector decoding', function () {
+    it('Should read the operation from its own byte and ignore the padding around it', async function () {
+      const { nativeTransferPolicy } = await loadFixture(fixture)
+
+      // The access selector packs `[selector][padding][operation][target]`. `configure` accepts a
+      // zero selector with a `CALL` operation, so these fix which bits each of the two is read
+      // from: `AccessSelector.getOperation` is `(access >> 216) & 1`, one bit wide, so bit 217 is
+      // dropped and `2 << 216` still reads as CALL, where a byte-wide mask would panic on it; a
+      // read one byte over would take the operation from the padding and let `1 << 216` through.
+      expect(await nativeTransferPolicy.configure(ZeroAddress, 0n, '0x')).to.equal(true)
+      expect(await nativeTransferPolicy.configure(ZeroAddress, 1n << 216n, '0x')).to.equal(false) // DELEGATECALL
+      expect(await nativeTransferPolicy.configure(ZeroAddress, 2n << 216n, '0x')).to.equal(true) // masked to CALL
+      expect(await nativeTransferPolicy.configure(ZeroAddress, 1n << 200n, '0x')).to.equal(true) // padding, ignored
+      expect(await nativeTransferPolicy.configure(ZeroAddress, 1n << 224n, '0x')).to.equal(false) // non-zero selector
+    })
+  })
 })
