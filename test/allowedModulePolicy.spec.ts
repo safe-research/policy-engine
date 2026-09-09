@@ -251,4 +251,21 @@ describe('AllowedModulePolicy', function () {
         )
     })
   })
+
+  describe('Configuration data decoding', function () {
+    // The policy reads the module and its flag straight out of the configuration data, so what it
+    // accepts is exactly what the ABI decoder accepts.
+    it('Should reject a module word whose high bits are not clear', async function () {
+      const { owner, safe, allowedModulePolicy, testModule } = await loadFixture(fixture)
+
+      // The configuration data is `(address, bool)`, and an address word with dirty high bits is
+      // not a valid `address`: the decoder rejects it, with no reason, before the policy sees it.
+      const dirty = ethers.concat(['0xffffffffffffffffffffffff', await testModule.getAddress()])
+      const allowed = ethers.zeroPadValue('0x01', 32)
+
+      await expect(
+        allowedModulePolicy.connect(owner).configure(safe, 0, ethers.concat([dirty, allowed]))
+      ).to.be.revertedWithoutReason()
+    })
+  })
 })
