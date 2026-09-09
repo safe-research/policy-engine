@@ -4,12 +4,13 @@ Results, evidence and limits for the Certora suite under `certora/`. Job ids lin
 
 ## 1. Scope and units
 
-Verified sources: `SafePolicyGuard.sol` configuration path; `AccessSelector.sol`, `SignatureExtension.sol`. `contracts/` is byte-identical to `main`, the suite adding specs, confs and harnesses only.
+Verified sources: `SafePolicyGuard.sol` configuration path; `AccessSelector.sol`, `SignatureExtension.sol`; Safe v1.5.0, mocked. `contracts/` is byte-identical to `main`, the suite adding specs, confs and harnesses only.
 
 | unit | subject | specs | confs |
 |---|---|---|---|
 | EngineConfig (CFG) | `SafePolicyGuard.sol` configuration path | `EngineConfig`, `Common` | `EngineConfig` |
 | Lib (LIB) | `AccessSelector.sol`, `SignatureExtension.sol` | `Lib` | `Lib`, `LibBitwise` |
+| shared | Safe v1.5.0, mocked | `SafeMock` | `SafeMock` |
 
 Harnesses: `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`: 5 files, 6 contracts. Repo tests: `test/*.spec.ts`, run by `npm test`.
 
@@ -20,7 +21,7 @@ Harnesses: `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeRespond
 | Green properties | 11 of 11: 10 unqualified, 1 qualified in the status cell |
 | Blocked on prover limits | none |
 | Waived with measured evidence | 0 |
-| Confs and their jobs | 3 confs, each row citing a graded job: 3 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
+| Confs and their jobs | 4 confs, each row citing a graded job: 4 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
 | Repo tests | 180 passing, the `npm test` summary line (section 8) |
 
 ## 3. Property table
@@ -71,12 +72,14 @@ One id of the series is retired, proven rather than waived, and is not counted a
 
 | id | where | justification | discharge |
 |---|---|---|---|
+| `L-IT-1` | `specs/SafeMock.spec` | The Safe's `checkNSignatures` verdict is a free function of `(dataHash, signatures, required)`, a wildcard over every callee, with `executor` captured and asserted `== 0` (`P/IncreasedThresholdPolicy:82-87`). |  |
 | `L-W0-2` | `harnesses/MockPolicyHarness.sol`, the DISPATCH lists of `specs/EngineConfig.spec` | The closed scene {Allow, Deny, OneTimeAllow, MockPolicyHarness} stands in for arbitrary policy code on the check (`E:200`) and configure (`E:292`) paths, dispatched by the per-signature `DISPATCH [...]` summaries. Each spec sets its own `default` for a policy outside that list, and the two settings are not the same adversary: under `HAVOC_ECF` an out-of-scene policy may write storage and re-enter the guard's configuration entry points, under `NONDET` it is a side-effect-free function returning a free value, which can neither revert nor re-enter. The configuration specs set `HAVOC_ECF`; a check spec sets what its own header states. | job [f2ef38dc](https://prover.certora.com/output/950385/f2ef38dc32074acca3ec5c6d381fd363?anonymousKey=ad922e5d6e6893f7d73eabdd601d93f7cf2cdc44) |
 | `L-CFG-SCENE` | `specs/EngineConfig.spec` | The iff halves are stated only where the scene fixes the `configure` verdict, `policy in {0, Allow, Deny, OneTimeAllow, MockPolicyHarness}`, and those rules pin the mock away from its re-entrant `CALL_CONFIG` mode. | `test/policyEngine.spec.ts`: "Should reject configuring an account with no code as a policy" |
-| `L-W0-1` | `harnesses/SafeMockHarness.sol`, the 1 `EngineCheck*`/`EngineConfig*` conf | `SafeMockHarness` stands in for the Safe in the guard scenes, whose subject is the guard slot: `getStorageAt` (`StorageAccessible.sol:16-29`) and `getTransactionHash`/`domainSeparator` (`Safe.sol:389-399,404-473`) verbatim, guard values at the real keccak slots (`G:49,55-56`), `nonce`/`getOwners`/`getThreshold` as storage. | argument: `getStorageAt`, `getTransactionHash` and `domainSeparator` are Safe v1.5.0's code copied verbatim |
+| `L-W0-1` | `harnesses/SafeMockHarness.sol`, the 1 `EngineCheck*`/`EngineConfig*` conf, `conf/SafeMock.conf` | `SafeMockHarness` stands in for the Safe in the guard scenes, whose subject is the guard slot: `getStorageAt` (`StorageAccessible.sol:16-29`) and `getTransactionHash`/`domainSeparator` (`Safe.sol:389-399,404-473`) verbatim, guard values at the real keccak slots (`G:49,55-56`), `nonce`/`getOwners`/`getThreshold` as storage. | argument: `getStorageAt`, `getTransactionHash` and `domainSeparator` are Safe v1.5.0's code copied verbatim |
 | `L-BIND-3` | applies at `harnesses/SafeMockHarness.sol`; defined here | The mock's hash equals a real Safe's EIP-712 transaction hash for the same fields at the mock's address and chain. | argument: the mock's `getTransactionHash` and `domainSeparator` are Safe v1.5.0's code copied verbatim, as L-W0-1 states |
 | `L-CFG-LOOP-N1` | `specs/EngineConfig.spec`, `conf/EngineConfig.conf` | These rules bound the configuration array to at most one entry instead of the unit's usual three: `W_CFG_1_W2` and `W_CFG_1_W3`. | argument |
-| `L-W0-HASH` | `conf/LibBitwise.conf` | Executions hashing a `bytes` value longer than the conf's own bound are dropped, an assumed bound. | argument: the flag drops executions that hash past the bound, so a violation beyond it is missed, and no rule of the suite hashes an unbounded `bytes` |
+| `L-IT-4` | `specs/SafeMock.spec` | The owner list is bounded to 4 entries and hashing to `hashing_length_bound 3200`, the L-W0-HASH instance, because `_requiredSignatures` reads `ISafe(safe).getOwners().length` (`P/IncreasedThresholdPolicy:147`). |  |
+| `L-W0-HASH` | `conf/LibBitwise.conf`, `conf/SafeMock.conf` | Executions hashing a `bytes` value longer than the conf's own bound are dropped, an assumed bound. | argument: the flag drops executions that hash past the bound, so a violation beyond it is missed, and no rule of the suite hashes an unbounded `bytes` |
 | `L-W0-SENTINEL` | `specs/Common.spec` | No rule of this tree assumes `$checkingSafe == 0 && $checkingModule == 0` in the pre-state of a hook call through `requireInvariant`; that state is the sentinel invariant's own claim. |  |
 | `L-W0-SENDER` | `specs/EngineConfig.spec` (the `msg.sender != 0` requires) | `msg.sender` is never `address(0)` on chain: no key has that address and a contract cannot be deployed there. | argument |
 | `L-ENV-TIME` | applies at `specs/EngineConfig.spec`; defined here | Block timestamps are non-decreasing across transactions | argument |
@@ -97,7 +100,8 @@ One id of the series is retired, proven rather than waived, and is not counted a
 | `L-CFG-SLOTMOCK` | `harnesses/Mocks.sol` (`SafeSlotMock`), `specs/EngineConfig.spec` | The Safe answering the guard's slot probe in the `GuardAlreadyEnabled` family is `SafeSlotMock`, a Safe's observable answer with slot words in a mapping, and `SafeMockHarness` is out of that DISPATCH list. | `test/safePolicyGuardConfiguration.spec.ts` |
 | `L-EC-6` | `harnesses/MockPolicyHarness.sol` | Re-entry through `MockPolicyHarness` is modelled to one nested dispatched frame, with an asserted bound. |  |
 | `L-EC-8` | `harnesses/SafePolicyGuardHarness.sol` | `tryCheck` is an external self-call (`msg.sender == guard`), used only to classify the engine-level revert as `AccessDenied`, `PolicyReverted` or raw. |  |
-| `L-IT-2` | `harnesses/SafeMockHarness.sol` | The Safe in scene is set up: `1 <= threshold <= ownerCount`, an invariant against the mock, whose only writer `SafeMockHarness.setOwnersAndThreshold` requires it, and a precondition of the rules that put Safe v1.5.0 in scene, whose own writers are `authorized` and therefore unreachable from a policy rule |  |
+| `L-IT-2` | `specs/SafeMock.spec`, `conf/SafeMock.conf` | The Safe in scene is set up: `1 <= threshold <= ownerCount`, an invariant against the mock, whose only writer `SafeMockHarness.setOwnersAndThreshold` requires it, and a precondition of the rules that put Safe v1.5.0 in scene, whose own writers are `authorized` and therefore unreachable from a policy rule | job [335e2ef1](https://prover.certora.com/output/950385/335e2ef18dc6432faed47cebc7fcb542?anonymousKey=c2e1256ff0e44b4ecc333201615dc59d02e4e8c4) |
+| `L-IT-9` | `conf/SafeMock.conf`, `specs/SafeMock.spec` | An unknown Safe's owner list is a free array of at most four entries, in the three rules over an arbitrary `safe`; the rules over the Safe in scene assume nothing here, `getOwners()` there being Safe v1.5.0's own walk of its owner list. `SafeMock.conf`'s `ownersLengthIsOwnerCount` proves the same length fact against `SafeMockHarness`'s own body at up to three owners: a sanity check on the shape of the summary, not its discharge, since no IncreasedThreshold conf links the mock and the rules that read the summary run at four owners. |  |
 | `L-POL-CTX-M` | applies at `specs/EngineConfig.spec`; defined here | An audit of the exposure class: each rule the prover's empty-`bytes` pair defect leaves unmeasured is probed in three emptiness cases (`context` empty, `data` empty, both), 75 probes verdicting 69 SUCCESS, 6 vacuous and 0 FAIL, the vacuous ones being empty-`data` probes of rules whose antecedents need `batchLength(data)` to decode; the `configureImmediately` effects rule is covered instead by four pinned cases with the flag off, all SUCCESS. An exposed rule that carries a companion pinning `context1.length == 0` is answered by that companion rather than by a probe, so the `data1`/`data2` pair of such an independence rule is unmeasured. | argument: the enumeration's 75 probe jobs, not linked here, whose confs are not part of this tree, and job [a1318175](https://prover.certora.com/output/950385/a1318175b20042e88501662982d419fd?anonymousKey=153d0f62ccc55542b1c2b75aa3b53ef0b5365c45) for the four pinned cases, whose conf is not part of this tree, so the job cannot be re-run from it |
 
 ## 5. Modelling decisions
@@ -141,6 +145,6 @@ certoraRun certora/conf/<name>.conf --wait_for_results all
 
 The repo-test count is the runner's own summary line, `npm test` ending in `180 passing`; it excludes every `[@bench]` title through `--grep` (`package.json`), so a raw `it(` count over `test/` is higher. Count from the `status` column, not by grepping a row's prose, and treat a job as evidence only for the conf whose rule set it ran: check that the job's Rules tab lists exactly that conf's `rule` filter. The conf and its `rule` filter are the reproducible evidence either way.
 
-Every one of the 3 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
+Every one of the 4 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
 
 The other jobs this report cites ran confs that are not part of this tree, and each citation says so; each such job stays readable through its link.
