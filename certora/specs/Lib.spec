@@ -28,6 +28,83 @@ methods {
     function guard.decodeContext(bytes) external returns (bytes) envfree;
 }
 
+// Canonical means bits 160..215 and 217..223 are zero, stated arithmetically because CVL bitwise ops are
+// over-approximated.
+definition canonical(uint256 x) returns bool =
+    (x % 2^216) < 2^160 && ((x / 2^216) % 256) <= 1;
+
+// R-LIB-1: the three getters invert `create` for every (to, sel, op), so `create` is injective.
+rule R_LIB_1(address to, bytes4 sel, LibHarness.Operation op,
+             address to2, bytes4 sel2, LibHarness.Operation op2) {
+    AccessSelector.T k = create(to, sel, op);
+    assert getTarget(k) == to, "getTarget inverts create";
+    assert getSelector(k) == sel, "getSelector inverts create";
+    assert getOperation(k) == op, "getOperation inverts create";
+    AccessSelector.T k2 = create(to2, sel2, op2);
+    assert k == k2 => (to == to2 && sel == sel2 && op == op2), "create is injective";
+}
+
+// R-LIB-2: `create(to,sel,op)` is `to + op*2^216 + sel*2^224` and canonical, `createFallback(CALL)` is 0 and
+// `createFallback(DELEGATECALL)` is 2^216.
+rule R_LIB_2(address to, bytes4 sel, LibHarness.Operation op) {
+    uint256 k = assert_uint256(create(to, sel, op));
+    // The three components are < 2^160, < 2 and < 2^32, so the sum cannot overflow and the equation fixes the exact bit
+    // layout.
+    assert k == to_mathint(to) + to_mathint(op) * 2^216 + selUint(sel) * 2^224,
+        "packed word == target + op*2^216 + selector*2^224";
+    assert canonical(k), "bits 160..215 and 217..223 of a create result are zero";
+    assert createFallback(opCall()) == 0, "createFallback(CALL) == 0";
+    assert to_mathint(createFallback(opDelegateCall())) == 2^216, "createFallback(DELEGATECALL) == 2^216";
+}
+
+// R-LIB-3: createFallback(op) == create(0, 0, op) for both operations. The collision is intended.
+rule R_LIB_3() {
+    assert createFallback(opCall()) == create(0, to_bytes4(0), opCall()),
+        "createFallback(CALL) == create(address(0), bytes4(0), CALL)";
+    assert createFallback(opDelegateCall()) == create(0, to_bytes4(0), opDelegateCall()),
+        "createFallback(DELEGATECALL) == create(address(0), bytes4(0), DELEGATECALL)";
+}
+
+// R-LIB-4: for an arbitrary word the getters never revert and `getOperation` returns CALL or
+// DELEGATECALL (the `& 1` at AccessSelector.sol:66).
+rule R_LIB_4(uint256 raw) {
+    AccessSelector.T x = raw;
+    getTarget@withrevert(x);
+    assert !lastReverted, "getTarget never reverts";
+    getSelector@withrevert(x);
+    assert !lastReverted, "getSelector never reverts";
+    LibHarness.Operation o = getOperation@withrevert(x);
+    assert !lastReverted, "getOperation never reverts";
+    assert o == opCall() || o == opDelegateCall(), "getOperation is CALL or DELEGATECALL";
+}
+
+// R-LIB-5: recomposing a word through the getters is the identity exactly on canonical words, and is always canonical
+// and getter-equivalent.
+rule R_LIB_5(uint256 raw) {
+    AccessSelector.T x = raw;
+    AccessSelector.T y = create(getTarget(x), getSelector(x), getOperation(x));
+    assert (y == x) <=> canonical(raw), "recompose is the identity iff bits 160..215 and 217..223 are zero";
+    assert canonical(assert_uint256(y)), "the recomposed word is canonical";
+    assert getTarget(y) == getTarget(x) && getSelector(y) == getSelector(x)
+        && getOperation(y) == getOperation(x), "the recomposed word is getter-equivalent";
+}
+
+// W-LIB-1, selector half: (a) a non-canonical word with all getters defined, (b) a DELEGATECALL key with to != 0 and
+// sel != 0 that round-trips.
+rule W_LIB_1_selector(uint256 raw, address to, bytes4 sel) {
+    AccessSelector.T x = raw;
+    getTarget@withrevert(x);
+    bool ok1 = !lastReverted;
+    getSelector@withrevert(x);
+    bool ok2 = !lastReverted;
+    getOperation@withrevert(x);
+    bool ok3 = !lastReverted;
+    satisfy ok1 && ok2 && ok3 && !canonical(raw); // (a)
+    AccessSelector.T k = create(to, sel, opDelegateCall());
+    satisfy to != 0 && sel != to_bytes4(0)
+        && getTarget(k) == to && getSelector(k) == sel && getOperation(k) == opDelegateCall(); // (b)
+}
+
 // R-LIB-6: `payload(blob, T)` reverts iff the blob is short, wrongly typed or over-long, and
 // otherwise returns the designated envelope slice.
 rule R_LIB_6(bytes blob, bytes32 th, uint256 off) {
@@ -75,3 +152,24 @@ rule R_LIB_7(bytes blob, bytes32 th, uint256 off) {
         "typed and well-formed: the context is the envelope payload region, byte for byte";
 }
 
+// W-LIB-1, envelope half: (c) a well-formed envelope decodes to non-empty context, (d) a >= 32-byte blob not ending in
+// H yields empty context; run under `precise_bitwise_ops` so no `satisfy` is met by an over-approximation.
+rule W_LIB_1_envelope(bytes blobA, bytes blobB) {
+    bytes32 H = guard.CONTEXT_TYPE_HASH();
+    bytes ctxA = guard.decodeContext@withrevert(blobA);
+    bool okA = !lastReverted;
+    satisfy okA && has(blobA, H) && ctxA.length > 0; // (c)
+    bytes ctxB = guard.decodeContext@withrevert(blobB);
+    bool okB = !lastReverted;
+    satisfy okB && blobB.length >= 32 && !has(blobB, H) && ctxB.length == 0; // (d)
+}
+
+// R-LIB-8: `selectorOf(d)` is `bytes4(d)` at every length, zero-padded past `d.length`, what the two ERC20
+// readers compute (ERC20TransferPolicy.sol:93, ERC20ApprovePolicy.sol:96). `PolicyEngine._decodeSelector`
+// (PolicyEngine.sol:247-255) agrees at length 0 and at length >= 4 and reverts InvalidSelector in between; the
+// claim WAIVED-EC-2 stood in for; L-LIB-2, L-LIB-4.
+rule R_LIB_8(bytes d) {
+    uint256 sel = selUint(selectorOf(d));
+    assert sel == wordAt(d, 0) / 2^224, "selectorOf(d) is the first four bytes of d";
+    assert sel / 0x1000000 == byteAt(d, 0), "the leading byte of selectorOf(d) is byte 0 of d";
+}
