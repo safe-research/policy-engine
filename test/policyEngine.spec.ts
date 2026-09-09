@@ -1,7 +1,7 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
-import { ethers } from 'hardhat'
+import { ethers, network } from 'hardhat'
 
 import {
   createSafe,
@@ -309,6 +309,83 @@ describe('PolicyEngine Edge Cases', function () {
       await expect(execTransaction({ owners: [owner], safe, to: randomAddress() }))
         .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
         .withArgs(ZeroAddress)
+    })
+  })
+
+  describe('Policies with no usable return', function () {
+    // A policy whose return data cannot be decoded -- no code at all, fewer than 32 bytes, or the
+    // calldata echoed back -- fails inside the ABI decoder at the call site, which is outside the
+    // `try`/`catch` around the policy call. So the whole entry point reverts with empty data
+    // rather than with `PolicyConfigurationFailed` or `AccessDenied`, and the fail-closed direction
+    // is the only thing these can land on.
+
+    /** An address that echoes its calldata: the identity precompile. */
+    const ECHOING_ADDRESS = '0x0000000000000000000000000000000000000004'
+    /** Runtime returning four zero bytes for any call, fewer than a `bytes4` return needs. */
+    const SHORT_RETURN_CODE = '0x60046000f3'
+    /** Runtime echoing its calldata for any call. */
+    const ECHO_CODE = '0x365f5f37365ff3'
+
+    async function configuredFixture() {
+      const base = await loadFixture(fixture)
+      const { owner, safe, safePolicyGuard } = base
+
+      // Deployed here rather than taken from the fixture, since these tests overwrite its code.
+      const policy = await (await ethers.getContractFactory('MockPolicy')).deploy()
+      const policyAddress = await policy.getAddress()
+      const target = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [createConfiguration({ target, policy: policyAddress })]
+      })
+
+      /** A guarded transaction whose check reaches the configured policy. */
+      const check = () => execTransaction({ owners: [owner], safe, to: target })
+      /** Replaces the configured policy's code, which no path through the engine can do. */
+      const plant = (code: string) => network.provider.send('hardhat_setCode', [policyAddress, code])
+
+      return { ...base, policyAddress, target, check, plant }
+    }
+
+    it('Should reject configuring an account with no code as a policy', async function () {
+      const { owner, safePolicyGuard } = await loadFixture(fixture)
+
+      const configuration = createConfiguration({ target: randomAddress(), policy: randomAddress() })
+      await expect(safePolicyGuard.connect(owner).configureImmediately([configuration])).to.be.revertedWithoutReason()
+    })
+
+    it('Should reject configuring an address that echoes its calldata as a policy', async function () {
+      const { owner, safePolicyGuard } = await loadFixture(fixture)
+
+      // `configure` is echoed back, so the first word decoded as its `bool` return is the selector
+      // followed by the head of the first argument, which is neither 0 nor 1.
+      const configuration = createConfiguration({ target: randomAddress(), policy: ECHOING_ADDRESS })
+      await expect(safePolicyGuard.connect(owner).configureImmediately([configuration])).to.be.revertedWithoutReason()
+    })
+
+    it('Should revert without a reason when a configured policy has lost its code', async function () {
+      const { check, plant } = await configuredFixture()
+
+      await expect(check()).to.not.be.reverted
+      await plant('0x')
+      await expect(check()).to.be.revertedWithoutReason()
+    })
+
+    it('Should revert without a reason when a configured policy returns fewer than 32 bytes', async function () {
+      const { check, plant } = await configuredFixture()
+
+      await plant(SHORT_RETURN_CODE)
+      await expect(check()).to.be.revertedWithoutReason()
+    })
+
+    it('Should revert without a reason when a configured policy echoes its calldata', async function () {
+      const { check, plant } = await configuredFixture()
+
+      await plant(ECHO_CODE)
+      await expect(check()).to.be.revertedWithoutReason()
     })
   })
 })

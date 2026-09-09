@@ -20,7 +20,7 @@ Harnesses: `LibHarness`, `SafePolicyGuardHarness`: 2 files, 2 contracts. Repo te
 | Blocked on prover limits | none |
 | Waived with measured evidence | 0 |
 | Confs and their jobs | 2 confs, each row citing a graded job: 2 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
-| Repo tests | 175 passing, the `npm test` summary line (section 8) |
+| Repo tests | 180 passing, the `npm test` summary line (section 8) |
 
 ## 3. Property table
 
@@ -92,11 +92,11 @@ No conf of this tree runs a rule for the properties below. Their rules stay in t
 # grade a job at https://prover.certora.com/output/950385/<32-hex job id>: the Rules tab lists every
 # rule's verdict (green only if all are SUCCESS), the Job Info tab the flags the server ran with,
 # which are the authority over conf text
-npm test                                                              # 175 repo tests at this tree
+npm test                                                              # 180 repo tests at this tree
 certoraRun certora/conf/<name>.conf --wait_for_results all
 ```
 
-The repo-test count is the runner's own summary line, `npm test` ending in `175 passing`; it excludes every `[@bench]` title through `--grep` (`package.json`), so a raw `it(` count over `test/` is higher. Count from the `status` column, not by grepping a row's prose, and treat a job as evidence only for the conf whose rule set it ran: check that the job's Rules tab lists exactly that conf's `rule` filter. The conf and its `rule` filter are the reproducible evidence either way.
+The repo-test count is the runner's own summary line, `npm test` ending in `180 passing`; it excludes every `[@bench]` title through `--grep` (`package.json`), so a raw `it(` count over `test/` is higher. Count from the `status` column, not by grepping a row's prose, and treat a job as evidence only for the conf whose rule set it ran: check that the job's Rules tab lists exactly that conf's `rule` filter. The conf and its `rule` filter are the reproducible evidence either way.
 
 Every one of the 2 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
 
