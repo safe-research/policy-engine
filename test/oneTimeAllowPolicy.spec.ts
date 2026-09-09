@@ -245,4 +245,27 @@ describe('OneTimeAllowPolicy', function () {
         .withArgs(safePolicyGuard, safe, access)
     })
   })
+
+  describe('Configuration Data Decoding', function () {
+    // The policy reads its grant flag straight out of the configuration data, so what it accepts is
+    // exactly what the ABI decoder accepts.
+    it('Should reject a configuration word that is not a canonical boolean', async function () {
+      const { deployer, safe, oneTimeAllowPolicy, accessSelector } = await loadFixture(fixture)
+
+      const access = await accessSelector.create(randomAddress(), '0x00000000', SafeOperation.Call)
+      const word = (value: string) => ethers.zeroPadValue(value, 32)
+
+      // A `bool` is one word holding 0 or 1; anything else fails inside the decoder, which is a
+      // revert with no reason rather than a policy verdict.
+      await expect(
+        oneTimeAllowPolicy.connect(deployer).configure(safe, access, word('0x02'))
+      ).to.be.revertedWithoutReason()
+      // ...and a word is the minimum: a single byte is not one.
+      await expect(oneTimeAllowPolicy.connect(deployer).configure(safe, access, '0x00')).to.be.revertedWithoutReason()
+
+      // Words past the declared argument are ignored, as the decoder ignores them.
+      await oneTimeAllowPolicy.connect(deployer).configure(safe, access, ethers.concat([word('0x01'), word('0x09')]))
+      expect(await oneTimeAllowPolicy.isGranted(deployer, safe, access)).to.equal(true)
+    })
+  })
 })
