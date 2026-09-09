@@ -19,6 +19,8 @@ import {
   consensusDomainSeparator,
   encodeAttestation,
   epochRolloverMessage,
+  FrostSignature,
+  Point,
   pointFromScalar,
   signFrost,
   transactionProposalMessage,
@@ -33,6 +35,8 @@ const CONSENSUS_CHAIN_ID = 100n
 const CONSENSUS_ADDRESS = '0x1111111111111111111111111111111111111111'
 const GENESIS_EPOCH = 7n
 const GROUP_SECRET = 0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe5afen
+/** The secp256k1 field modulus, as `Secp256k1` carries it. */
+const FIELD_MODULUS = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn
 
 describe('SafenetPolicy', function () {
   async function fixture() {
@@ -397,6 +401,339 @@ describe('SafenetPolicy', function () {
       await expect(
         factory.deploy(CONSENSUS_CHAIN_ID, CONSENSUS_ADDRESS, GENESIS_EPOCH, { x: 0n, y: 0n })
       ).to.be.revertedWithCustomError(factory, 'NotOnCurve')
+    })
+  })
+
+  describe('Attestation decoding', function () {
+    // The policy reads the attestation straight out of the transaction's context, so what it
+    // accepts is exactly what the ABI decoder accepts.
+    it('Should reject an epoch word that is not a canonical uint64', async function () {
+      const { safe, safenetPolicy } = await loadFixture(fixture)
+
+      // The attestation is eight static words. A canonical epoch word decodes, and the check gets
+      // as far as looking the group key up; a word with bits set above the 64th is not a `uint64`
+      // at all and is rejected inside the decoder, which reverts with no reason.
+      const word = (value: bigint) => ethers.zeroPadValue(ethers.toBeHex(value), 32)
+      const attestation = (epoch: bigint) =>
+        ethers.concat([word(epoch), word(1n), word(0n), word(1n), word(2n), word(3n), word(4n), word(5n)])
+      expect(ethers.dataLength(attestation(GENESIS_EPOCH))).to.equal(256)
+
+      const check = (context: string) =>
+        safenetPolicy.checkTransaction(safe, ZeroAddress, 0n, '0x', SafeOperation.Call, ZeroAddress, context, 0n)
+
+      // The group key `(1, 2)` is not the genesis key, so a successful decode lands here.
+      await expect(check(attestation(GENESIS_EPOCH))).to.be.revertedWithCustomError(
+        safenetPolicy,
+        'UntrustedAttestationKey'
+      )
+      await expect(check(attestation((1n << 64n) | GENESIS_EPOCH))).to.be.revertedWithoutReason()
+      await expect(check(attestation(2n ** 256n - 1n))).to.be.revertedWithoutReason()
+    })
+  })
+
+  describe('Epoch rollover: signature binding', function () {
+    const PROPOSED_EPOCH = GENESIS_EPOCH + 1n
+    const ROLLOVER_BLOCK = 1234n
+    const NEW_SECRET = GROUP_SECRET + 42n
+
+    type Rollover = {
+      parentKey: Point
+      parentEpoch: bigint
+      proposedEpoch: bigint
+      rolloverBlock: bigint
+      newGroupKey: Point
+    }
+
+    // One signature over one honest rollover, reused verbatim by every case below: each tampers
+    // with a single field and asserts the specific rejection, so what these establish is which
+    // fields the signature binds: a field left out of the signed message would let the capture in.
+    async function rolloverFixture() {
+      const base = await loadFixture(fixture)
+      const { safenetPolicy, testFrost, domainSeparator, groupKey } = base
+
+      const honest: Rollover = {
+        parentKey: groupKey,
+        parentEpoch: GENESIS_EPOCH,
+        proposedEpoch: PROPOSED_EPOCH,
+        rolloverBlock: ROLLOVER_BLOCK,
+        newGroupKey: pointFromScalar(NEW_SECRET)
+      }
+      const message = epochRolloverMessage(
+        domainSeparator,
+        honest.parentEpoch,
+        honest.proposedEpoch,
+        honest.rolloverBlock,
+        honest.newGroupKey
+      )
+      const { signature } = await signFrost(testFrost, GROUP_SECRET, 0xfeedn, message)
+
+      const submit = (rollover: Rollover, sig: FrostSignature = signature) =>
+        safenetPolicy.updateEpoch(
+          rollover.parentKey,
+          rollover.parentEpoch,
+          rollover.proposedEpoch,
+          rollover.rolloverBlock,
+          rollover.newGroupKey,
+          sig
+        )
+
+      return { ...base, honest, submit }
+    }
+
+    it('Should reject a captured signature re-pointed at another group key', async function () {
+      const { safenetPolicy, honest, submit } = await rolloverFixture()
+
+      const keys: [string, Point][] = [
+        ['another valid successor key', pointFromScalar(NEW_SECRET + 1n)],
+        ['the parent key itself', honest.parentKey],
+        // The negation shares `x` and differs only in `y`, so binding `x` alone would let it pass.
+        ['the negation of the signed key', { x: honest.newGroupKey.x, y: FIELD_MODULUS - honest.newGroupKey.y }]
+      ]
+
+      for (const [name, newGroupKey] of keys) {
+        await expect(submit({ ...honest, newGroupKey }), name).to.be.revertedWithCustomError(
+          safenetPolicy,
+          'InvalidMulMulAddWitness'
+        )
+        expect(await safenetPolicy.isKnownEpoch(newGroupKey, honest.proposedEpoch), name).to.equal(false)
+      }
+
+      // Nor is the honest pair recorded: no half of the write survived a rejection.
+      expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, honest.proposedEpoch)).to.equal(false)
+    })
+
+    it('Should reject a captured signature re-pointed at another proposed epoch', async function () {
+      const { safenetPolicy, honest, submit } = await rolloverFixture()
+
+      // Every value here is greater than the parent epoch, so the advance check is not what
+      // rejects them.
+      for (const proposedEpoch of [honest.proposedEpoch + 1n, honest.proposedEpoch + 100n, 2n ** 64n - 1n]) {
+        await expect(submit({ ...honest, proposedEpoch }), `epoch ${proposedEpoch}`).to.be.revertedWithCustomError(
+          safenetPolicy,
+          'InvalidMulMulAddWitness'
+        )
+        expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, proposedEpoch)).to.equal(false)
+      }
+    })
+
+    it('Should reject a captured signature re-pointed at another rollover block', async function () {
+      const { safenetPolicy, honest, submit } = await rolloverFixture()
+
+      // The rollover block is folded into the signed message but never read afterwards. Unchecked
+      // is not unbound: it is inside the struct hash, so tampering with it invalidates the
+      // signature all the same.
+      for (const rolloverBlock of [honest.rolloverBlock + 1n, 0n, 2n ** 64n - 1n]) {
+        await expect(submit({ ...honest, rolloverBlock }), `block ${rolloverBlock}`).to.be.revertedWithCustomError(
+          safenetPolicy,
+          'InvalidMulMulAddWitness'
+        )
+      }
+      expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, honest.proposedEpoch)).to.equal(false)
+    })
+
+    it('Should reject a rollover signed for another Consensus deployment', async function () {
+      const { safenetPolicy, testFrost, honest, submit } = await rolloverFixture()
+
+      // The same fields and the same signer, but another `verifyingContract` or chain id: a
+      // rollover of a different deployment, replayed here.
+      const separators: [string, string][] = [
+        [
+          'another Consensus address',
+          consensusDomainSeparator(CONSENSUS_CHAIN_ID, '0x2222222222222222222222222222222222222222')
+        ],
+        ['another Consensus chain', consensusDomainSeparator(CONSENSUS_CHAIN_ID + 1n, CONSENSUS_ADDRESS)]
+      ]
+
+      for (const [name, domainSeparator] of separators) {
+        const message = epochRolloverMessage(
+          domainSeparator,
+          honest.parentEpoch,
+          honest.proposedEpoch,
+          honest.rolloverBlock,
+          honest.newGroupKey
+        )
+        const { signature } = await signFrost(testFrost, GROUP_SECRET, 0xfeedn, message)
+        await expect(submit(honest, signature), name).to.be.revertedWithCustomError(
+          safenetPolicy,
+          'InvalidMulMulAddWitness'
+        )
+      }
+      expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, honest.proposedEpoch)).to.equal(false)
+    })
+
+    it('Should reject a tampered parent epoch and a non-advancing epoch ahead of the signature', async function () {
+      const { safenetPolicy, honest, submit } = await rolloverFixture()
+
+      // The parent epoch is bound too, but the `(parentKey, parentEpoch)` lookup runs first, so a
+      // tampered parent epoch is rejected there rather than by the signature check.
+      for (const parentEpoch of [honest.parentEpoch + 1n, honest.parentEpoch - 1n, 0n]) {
+        await expect(
+          submit({ ...honest, parentEpoch, proposedEpoch: parentEpoch + 1n }),
+          `parent ${parentEpoch}`
+        ).to.be.revertedWithCustomError(safenetPolicy, 'UnknownParent')
+      }
+
+      // The strict-advance guard is likewise ahead of the signature check.
+      for (const proposedEpoch of [honest.parentEpoch, honest.parentEpoch - 1n, 0n]) {
+        await expect(submit({ ...honest, proposedEpoch }), `proposed ${proposedEpoch}`).to.be.revertedWithCustomError(
+          safenetPolicy,
+          'EpochNotAdvancing'
+        )
+      }
+
+      expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, honest.proposedEpoch)).to.equal(false)
+    })
+
+    it('Should still accept the honest rollover after every rejected variant', async function () {
+      const { safenetPolicy, honest, submit } = await rolloverFixture()
+
+      // The control for all of the above: the rejections were the tampering, and not a fixture
+      // that could never have recorded anything.
+      await expect(submit({ ...honest, proposedEpoch: honest.proposedEpoch + 1n })).to.be.reverted
+      await expect(submit({ ...honest, rolloverBlock: 0n })).to.be.reverted
+      await expect(submit({ ...honest, newGroupKey: pointFromScalar(NEW_SECRET + 1n) })).to.be.reverted
+
+      await submit(honest)
+      expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, honest.proposedEpoch)).to.equal(true)
+      // The pair recorded is exact, not a range around it.
+      expect(await safenetPolicy.isKnownEpoch(honest.newGroupKey, honest.proposedEpoch + 1n)).to.equal(false)
+    })
+  })
+
+  describe('Curve checks', function () {
+    // Two curve points with one small coordinate, so that coordinate plus the field modulus still
+    // fits in a `uint256` -- the window above the modulus is only about 4.3e9 wide.
+    const SMALL_X: Point = { x: 1n, y: 0x4218f20ae6c646b363db68605822fb14264ca8d2587fdd6fbc750d587e76a7een }
+    const SMALL_Y: Point = { x: 0x1fe1e5ef3fceb5c135ab7741333ce5a6e80d68167653f6b2b24bcbcfaaaff507n, y: 1n }
+
+    const onCurve = (p: Point) =>
+      (p.y * p.y - (p.x * p.x * p.x + 7n)) % FIELD_MODULUS === 0n && p.x < FIELD_MODULUS && p.y < FIELD_MODULUS
+
+    const deployWith = async (groupKey: Point) => {
+      const factory = await ethers.getContractFactory('SafenetPolicy')
+      return factory.deploy(CONSENSUS_CHAIN_ID, CONSENSUS_ADDRESS, GENESIS_EPOCH, groupKey)
+    }
+
+    it('Should reject a non-zero genesis group key that is off the curve', async function () {
+      const factory = await ethers.getContractFactory('SafenetPolicy')
+
+      // None of these is the zero point, which is the one off-curve value the unpacking exempts,
+      // so each has to be caught by the curve equation itself.
+      const offCurve: [string, Point][] = [
+        ['both coordinates one', { x: 1n, y: 1n }],
+        ['a zero y', { x: 1n, y: 0n }],
+        ['a zero x', { x: 0n, y: 1n }],
+        ['a curve point with y + 1', { x: SMALL_X.x, y: SMALL_X.y + 1n }],
+        ['a curve point with x + 1', { x: SMALL_X.x + 1n, y: SMALL_X.y }]
+      ]
+
+      for (const [name, groupKey] of offCurve) {
+        expect(groupKey.x !== 0n || groupKey.y !== 0n, name).to.equal(true)
+        await expect(deployWith(groupKey), name).to.be.revertedWithCustomError(factory, 'NotOnCurve')
+      }
+    })
+
+    it('Should reject a genesis coordinate that is not reduced modulo the field prime', async function () {
+      const factory = await ethers.getContractFactory('SafenetPolicy')
+
+      expect(onCurve(SMALL_X)).to.equal(true)
+      expect(onCurve(SMALL_Y)).to.equal(true)
+      // Both are accepted as they are, so the rejections below isolate the shift.
+      await deployWith(SMALL_X)
+      await deployWith(SMALL_Y)
+
+      // Modular arithmetic is unchanged by adding the modulus, so only a range check can reject
+      // these: the curve equation still holds for both.
+      const shifted: [string, Point][] = [
+        ['x above the modulus', { x: SMALL_X.x + FIELD_MODULUS, y: SMALL_X.y }],
+        ['y above the modulus', { x: SMALL_Y.x, y: SMALL_Y.y + FIELD_MODULUS }]
+      ]
+      for (const [name, groupKey] of shifted) {
+        expect((groupKey.y * groupKey.y - (groupKey.x * groupKey.x * groupKey.x + 7n)) % FIELD_MODULUS, name).to.equal(
+          0n
+        )
+        await expect(deployWith(groupKey), name).to.be.revertedWithCustomError(factory, 'NotOnCurve')
+      }
+    })
+
+    it('Should accept a genuine curve point and its negation as the genesis key', async function () {
+      const generated = pointFromScalar(GROUP_SECRET)
+
+      // The negation shares `x`, so accepting both is what shows the check is on the equation and
+      // not on some property of one coordinate.
+      const accepted: [string, Point][] = [
+        ['the group key', generated],
+        ['its negation', { x: generated.x, y: FIELD_MODULUS - generated.y }],
+        ['a small-x curve point', SMALL_X],
+        ['a small-y curve point', SMALL_Y]
+      ]
+
+      for (const [name, groupKey] of accepted) {
+        const deployed = await deployWith(groupKey)
+        expect(await deployed.isKnownEpoch(groupKey, GENESIS_EPOCH), name).to.equal(true)
+      }
+    })
+
+    it('Should reject an off-curve new group key before verifying the signature', async function () {
+      const { safenetPolicy, testFrost, domainSeparator, groupKey } = await loadFixture(fixture)
+
+      const proposedEpoch = GENESIS_EPOCH + 1n
+      const rolloverBlock = 1234n
+      // A well-formed signature over the honest message, so a rejection below is the curve check
+      // and not a signature failure.
+      const newGroupKey = pointFromScalar(GROUP_SECRET + 42n)
+      const message = epochRolloverMessage(domainSeparator, GENESIS_EPOCH, proposedEpoch, rolloverBlock, newGroupKey)
+      const { signature } = await signFrost(testFrost, GROUP_SECRET, 0xfeedn, message)
+
+      const offCurve: [string, Point][] = [
+        ['both coordinates one', { x: 1n, y: 1n }],
+        ['a zero y', { x: 1n, y: 0n }],
+        ['a curve point above the modulus', { x: SMALL_X.x + FIELD_MODULUS, y: SMALL_X.y }],
+        // Unlike the unpacking, this call site has no exemption for the zero point.
+        ['the zero point', { x: 0n, y: 0n }]
+      ]
+
+      for (const [name, bad] of offCurve) {
+        await expect(
+          safenetPolicy.updateEpoch(groupKey, GENESIS_EPOCH, proposedEpoch, rolloverBlock, bad, signature),
+          name
+        ).to.be.revertedWithCustomError(safenetPolicy, 'NotOnCurve')
+        expect(await safenetPolicy.isKnownEpoch(bad, proposedEpoch), name).to.equal(false)
+      }
+
+      // Control: the same call with the key the signature was made over is recorded.
+      await safenetPolicy.updateEpoch(groupKey, GENESIS_EPOCH, proposedEpoch, rolloverBlock, newGroupKey, signature)
+      expect(await safenetPolicy.isKnownEpoch(newGroupKey, proposedEpoch)).to.equal(true)
+    })
+
+    it('Should reject a signature commitment that is off the curve', async function () {
+      const { safenetPolicy, testFrost, domainSeparator, groupKey } = await loadFixture(fixture)
+
+      const proposedEpoch = GENESIS_EPOCH + 1n
+      const newGroupKey = pointFromScalar(GROUP_SECRET + 42n)
+      const message = epochRolloverMessage(domainSeparator, GENESIS_EPOCH, proposedEpoch, 0n, newGroupKey)
+      const { signature } = await signFrost(testFrost, GROUP_SECRET, 0xfeedn, message)
+
+      const rollover = (r: Point) =>
+        safenetPolicy.updateEpoch(groupKey, GENESIS_EPOCH, proposedEpoch, 0n, newGroupKey, { r, z: signature.z })
+
+      await expect(rollover({ x: 1n, y: 1n })).to.be.revertedWithCustomError(safenetPolicy, 'NotOnCurve')
+      await expect(rollover({ x: SMALL_X.x + FIELD_MODULUS, y: SMALL_X.y })).to.be.revertedWithCustomError(
+        safenetPolicy,
+        'NotOnCurve'
+      )
+      // The commitment is serialized into the challenge before it is ever unpacked, and that is
+      // where the zero point dies -- so the unpacking's exemption for it is unreachable from here.
+      await expect(rollover({ x: 0n, y: 0n })).to.be.revertedWithCustomError(safenetPolicy, 'NotOnCurve')
+
+      // The contrast: a commitment that is a curve point, but the wrong one, passes every curve
+      // check and fails at the group-equation comparison instead.
+      await expect(rollover(pointFromScalar(0xbeefn))).to.be.revertedWithCustomError(
+        safenetPolicy,
+        'InvalidMulMulAddWitness'
+      )
+
+      expect(await safenetPolicy.isKnownEpoch(newGroupKey, proposedEpoch)).to.equal(false)
     })
   })
 })
