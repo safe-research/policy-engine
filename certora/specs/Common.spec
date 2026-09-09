@@ -147,3 +147,17 @@ methods {
     function mockPolicy.observedRootValue() external returns (uint256) envfree;
 }
 
+// The sentinel invariant: between external transactions no check is in progress, so both sentinels are zero
+// (PolicyEngine.sol:221-237, SafePolicyGuard.sol:227-229,255-257); L-W0-LOOP. A spec that consumes this
+// invariant with `requireInvariant` carries a further assumption about which methods the induction step
+// ranges over, stated by the spec that consumes it.
+invariant sentinelsClear()
+    currentContract.$checkingSafe == 0 && currentContract.$checkingModule == 0
+    {
+        preserved configureImmediately(SafePolicyGuard.Configuration[] c) with (env e) {
+            require c.length <= 3;
+        }
+        preserved applyConfiguration(SafePolicyGuard.Configuration[] c) with (env e) {
+            require c.length <= 3;
+        }
+    }
