@@ -280,6 +280,8 @@ The same cases are the evidence for `WAIVED-H-7`.
 
 Tests: `test/coSignerPolicy.spec.ts`, 8 cases, none of them on the module path (D-006).
 
+Tests: `test/increasedThresholdPolicy.spec.ts`, 13 cases.
+
 #### Ids introduced here
 
 | id | claim | discharge |

@@ -7,14 +7,17 @@ import {
   buildMultiSendSafeTx,
   buildSafeTransaction,
   buildSignatureBytes,
+  calculateSafeMessageHash,
   createConfiguration,
   createSafe,
   enableGuard,
   encodeIncreasedThresholdConfig,
   execTransaction,
+  preApprovedSignature,
   randomAddress,
   safeSignTypedData,
-  SafeOperation
+  SafeOperation,
+  SafeSignature
 } from '../src/utils'
 import { Safe } from '../typechain-types'
 import {
@@ -305,6 +308,233 @@ describe('IncreasedThresholdPolicy', function () {
           0n
         )
       ).to.be.revertedWithCustomError(increasedThresholdPolicy, 'ModulePathUnsupported')
+    })
+  })
+
+  describe('Signature modes', function () {
+    /** The 100-byte `Error(string)` payload the Safe produces for a `GS0xx` code. */
+    const gs = (code: string) =>
+      ethers.concat(['0x08c379a0', ethers.AbiCoder.defaultAbiCoder().encode(['string'], [code])])
+
+    /** A `v == 0` contract-signature chunk: `[r = signer][s = offset of the dynamic part][v = 0]`. */
+    const contractChunk = (signer: string, offset: number) =>
+      ethers.solidityPacked(['uint256', 'uint256', 'uint8'], [signer, offset, 0])
+
+    // The policy hands the context to `Safe.checkNSignatures`, so every signature mode the Safe
+    // supports is reachable through it. These assert the Safe's own reason for each verdict, since
+    // a bare `PolicyReverted` would be satisfied by the policy rejecting the context for any reason
+    // at all -- including one that never reached the signature check.
+    async function signatureModesFixture() {
+      const base = await loadFixture(fixture)
+      const { owners, safePolicyGuard, increasedThresholdPolicy, accessSelector, safeProxyFactory, safeSingleton } =
+        base
+      const eoaOwners = owners.slice(0, 3)
+      const [owner, , , contractOwner] = owners
+
+      const { compatibilityFallbackHandler } = await deploySafeContracts()
+      // The ERC-1271 owner: a Safe with the compatibility handler, whose `isValidSignature`
+      // validates against its own single owner.
+      const contractSigner = await createSafe({
+        owners: [contractOwner],
+        guard: ZeroAddress,
+        saltNonce: BigInt(0x1271),
+        fallbackHandler: await compatibilityFallbackHandler.getAddress(),
+        safeProxyFactory,
+        singleton: safeSingleton
+      })
+      const contractSignerAddress = await contractSigner.getAddress()
+
+      // A 3-owner, 2-of-3 Safe of its own, so the contract signer can be promoted to a fourth owner
+      // while no guard is installed yet.
+      const safe = await createSafe({
+        owners: eoaOwners,
+        threshold: 2,
+        guard: ZeroAddress,
+        saltNonce: BigInt(0x17),
+        safeProxyFactory,
+        singleton: safeSingleton
+      })
+      await execTransaction({
+        owners: eoaOwners.slice(0, 2),
+        safe,
+        to: await safe.getAddress(),
+        data: safe.interface.encodeFunctionData('addOwnerWithThreshold', [contractSignerAddress, 2]),
+        signingMethod: 'signMessage'
+      })
+
+      const target = randomAddress()
+      await enableGuard({
+        owners: eoaOwners.slice(0, 2),
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target,
+            policy: await increasedThresholdPolicy.getAddress(),
+            data: encodeIncreasedThresholdConfig(1) // 4 owners, 1 absent, so 3 signatures
+          })
+        ]
+      })
+      await owner.sendTransaction({ to: await safe.getAddress(), value: ethers.parseEther('10') })
+
+      const access = await accessSelector.create(target, '0x00000000', SafeOperation.Call)
+      expect(await increasedThresholdPolicy.getRequiredSignatures(safePolicyGuard, safe, access)).to.equal(3n)
+
+      return {
+        ...base,
+        eoaOwners,
+        contractOwner,
+        contractSigner,
+        contractSignerAddress,
+        safe,
+        target,
+        policy: await increasedThresholdPolicy.getAddress()
+      }
+    }
+
+    /** The hash the policy derives for the transaction currently being checked. */
+    const policyHash = async (safe: Safe, to: string, value: bigint) =>
+      safe.getTransactionHash(
+        to,
+        value,
+        '0x',
+        SafeOperation.Call,
+        0,
+        0,
+        0,
+        ZeroAddress,
+        ZeroAddress,
+        await safe.nonce()
+      )
+
+    /** A plain-ECDSA EIP-712 chunk, `v in {27, 28}`. */
+    async function ecdsaChunk(safe: Safe, signer: Signer, to: string, value: bigint): Promise<SafeSignature> {
+      const safeTx = buildSafeTransaction({ to, value, data: '0x', nonce: await safe.nonce() })
+      return safeSignTypedData(signer, await safe.getAddress(), safeTx)
+    }
+
+    /** An ERC-1271 signature by the contract-owner Safe over `dataHash`, as its handler expects. */
+    async function contractSignature(contractSigner: Safe, contractOwner: Signer, dataHash: string) {
+      const { chainId } = await ethers.provider.getNetwork()
+      const messageHash = await calculateSafeMessageHash(await contractSigner.getAddress(), dataHash, Number(chainId))
+      // The Safe accepts an `eth_sign` chunk once `v` is shifted by 4.
+      return (await contractOwner.signMessage(ethers.getBytes(messageHash))).replace(/1b$/, '1f').replace(/1c$/, '20')
+    }
+
+    const send = (signers: Signer[], safe: Safe, to: string, value: bigint, context: string) =>
+      execTransaction({ owners: signers, safe, to, value, additionalData: context, signingMethod: 'signMessage' })
+
+    it('Should reject an approved-hash signature with no prior approveHash', async function () {
+      const { eoaOwners, safe, safePolicyGuard, policy, target } = await signatureModesFixture()
+      const value = ethers.parseEther('1')
+      const [first, second, third] = eoaOwners
+
+      // The policy passes `executor = address(0)`, which makes the Safe demand a recorded
+      // `approvedHashes` entry for a `v == 1` chunk rather than accepting the sender.
+      const context = buildSignatureBytes([
+        await ecdsaChunk(safe, first, target, value),
+        await ecdsaChunk(safe, second, target, value),
+        { signer: await third.getAddress(), data: await preApprovedSignature(third) }
+      ])
+      expect(ethers.dataLength(context)).to.equal(3 * 65)
+
+      await expect(send(eoaOwners.slice(0, 2), safe, target, value, context))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(policy, gs('GS025'))
+      expect(await ethers.provider.getBalance(target)).to.equal(0n)
+    })
+
+    it('Should accept an approved-hash signature once that owner approved the hash', async function () {
+      const { eoaOwners, safe, target } = await signatureModesFixture()
+      const value = ethers.parseEther('1')
+      const [first, second, third] = eoaOwners
+
+      const dataHash = await policyHash(safe, target, value)
+      await safe.connect(third).approveHash(dataHash)
+
+      const context = buildSignatureBytes([
+        await ecdsaChunk(safe, first, target, value),
+        await ecdsaChunk(safe, second, target, value),
+        { signer: await third.getAddress(), data: await preApprovedSignature(third) }
+      ])
+
+      await send(eoaOwners.slice(0, 2), safe, target, value, context)
+      expect(await ethers.provider.getBalance(target)).to.equal(value)
+    })
+
+    it('Should reject signatures given in descending owner order', async function () {
+      const { eoaOwners, safe, safePolicyGuard, policy, target } = await signatureModesFixture()
+      const value = ethers.parseEther('1')
+
+      const chunks = await Promise.all(eoaOwners.map((signer) => ecdsaChunk(safe, signer, target, value)))
+      const ascending = buildSignatureBytes(chunks)
+      // The same three signatures, order reversed: the only difference from an accepted context.
+      const descending = ethers.concat(
+        [...chunks].sort((a, b) => b.signer.toLowerCase().localeCompare(a.signer.toLowerCase())).map((c) => c.data)
+      )
+      expect(descending).to.not.equal(ascending)
+
+      await expect(send(eoaOwners.slice(0, 2), safe, target, value, descending))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(policy, gs('GS026'))
+
+      // Control: the ascending permutation of the very same signatures is accepted.
+      await send(eoaOwners.slice(0, 2), safe, target, value, ascending)
+      expect(await ethers.provider.getBalance(target)).to.equal(value)
+    })
+
+    it('Should accept an ERC-1271 signature and reject one pointing into the static part', async function () {
+      const { eoaOwners, contractOwner, contractSigner, contractSignerAddress, safe, safePolicyGuard, policy, target } =
+        await signatureModesFixture()
+      const value = ethers.parseEther('1')
+
+      const signature = await contractSignature(contractSigner, contractOwner, await policyHash(safe, target, value))
+      const chunks = await Promise.all(eoaOwners.slice(0, 2).map((s) => ecdsaChunk(safe, s, target, value)))
+      // Three static chunks are 195 bytes, so the dynamic part begins exactly there.
+      const build = (offset: number) =>
+        ethers.concat([
+          buildSignatureBytes([
+            ...chunks,
+            { signer: contractSignerAddress, data: contractChunk(contractSignerAddress, offset) }
+          ]),
+          ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [ethers.dataLength(signature)]),
+          signature
+        ])
+      expect(ethers.dataLength(build(195))).to.equal(195 + 32 + 65)
+
+      // An `s` pointing inside the static part is rejected before the validator is ever called.
+      await expect(send(eoaOwners.slice(0, 2), safe, target, value, build(100)))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(policy, gs('GS021'))
+
+      await send(eoaOwners.slice(0, 2), safe, target, value, build(195))
+      expect(await ethers.provider.getBalance(target)).to.equal(value)
+    })
+
+    it('Should propagate the validator own rejection of an ERC-1271 signature', async function () {
+      const { eoaOwners, contractSigner, contractSignerAddress, safe, safePolicyGuard, policy, target } =
+        await signatureModesFixture()
+      const value = ethers.parseEther('1')
+      const [first, second] = eoaOwners
+
+      // Signed by an owner of the outer Safe, who is not an owner of the contract signer.
+      const signature = await contractSignature(contractSigner, first, await policyHash(safe, target, value))
+      const context = ethers.concat([
+        buildSignatureBytes([
+          await ecdsaChunk(safe, first, target, value),
+          await ecdsaChunk(safe, second, target, value),
+          { signer: contractSignerAddress, data: contractChunk(contractSignerAddress, 195) }
+        ]),
+        ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [ethers.dataLength(signature)]),
+        signature
+      ])
+
+      // The inner Safe's own `checkSignatures` reverts and that reason bubbles out of the
+      // validator call, so the outer Safe never reaches its own "invalid signature" branch.
+      await expect(send(eoaOwners.slice(0, 2), safe, target, value, context))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(policy, gs('GS026'))
+      expect(await ethers.provider.getBalance(target)).to.equal(0n)
     })
   })
 })
