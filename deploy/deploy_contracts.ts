@@ -1,6 +1,12 @@
 import { DeployFunction } from 'hardhat-deploy/types'
 import { promises as fs } from 'node:fs'
 
+// How long a matured configuration change stays applicable for. Seven days by agreement; it is
+// independent of the delay and does not track it.
+const POLICIES_CONFIG_EXPIRY = process.env.POLICIES_CONFIG_EXPIRY
+  ? BigInt(parseInt(process.env.POLICIES_CONFIG_EXPIRY))
+  : 604800n
+
 const POLICIES_CONFIG_DELAY = process.env.POLICIES_CONFIG_DELAY
   ? BigInt(parseInt(process.env.POLICIES_CONFIG_DELAY))
   : 3600n
@@ -62,9 +68,9 @@ const deploy: DeployFunction = async function ({ run, getChainId, getNamedAccoun
 
   // Guard
   if (DEMO) {
-    await deployContract('AppSafePolicyGuard', [POLICIES_CONFIG_DELAY])
+    await deployContract('AppSafePolicyGuard', [POLICIES_CONFIG_DELAY, POLICIES_CONFIG_EXPIRY])
   } else {
-    await deployContract('SafePolicyGuard', [POLICIES_CONFIG_DELAY])
+    await deployContract('SafePolicyGuard', [POLICIES_CONFIG_DELAY, POLICIES_CONFIG_EXPIRY])
   }
 
   // Policies
