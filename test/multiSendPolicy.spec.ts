@@ -1,6 +1,6 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
-import { ZeroAddress } from 'ethers'
+import { BaseContract, ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
 import {
@@ -8,7 +8,9 @@ import {
   createSafe,
   enableGuard,
   encodeCoSignerConfig,
+  encodeMultiSend,
   execTransaction,
+  MetaTransaction,
   safeSignTypedData,
   randomAddress,
   randomSelector,
@@ -688,6 +690,367 @@ describe('MultiSendPolicy', function () {
       ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
 
       expect(await safe.isOwner(other.address)).to.equal(false)
+    })
+  })
+
+  // A sub-transaction of a batch may itself be a `multiSend` delegatecall, and a batch may hold
+  // more sub-transactions than any of the tests above use. Both shapes walk the same code, so what
+  // these check is that the walk neither stops early nor loses track of which context belongs to
+  // which position.
+  const leaf = (to: string): MetaTransaction => ({ operation: SafeOperation.Call, to, value: 0n, data: '0x' })
+
+  /** ABI-encodes a `multiSend` call over `txs`, as a sub-transaction's calldata. */
+  const batch = (multiSend: BaseContract, txs: MetaTransaction[]) =>
+    multiSend.interface.encodeFunctionData('multiSend', [encodeMultiSend(txs)])
+
+  /** A sub-transaction that is itself a batch. */
+  const nested = (multiSendAddress: string, data: string): MetaTransaction => ({
+    operation: SafeOperation.DelegateCall,
+    to: multiSendAddress,
+    value: 0n,
+    data
+  })
+
+  /**
+   * Packs one context per batch position, `[uint256 length][bytes]` each. An entry may itself be a
+   * whole packed blob, which is how a nested batch receives its own positional contexts.
+   */
+  const encodeContexts = (entries: string[]) =>
+    ethers.concat(
+      entries.map((entry) => ethers.solidityPacked(['uint256', 'bytes'], [ethers.dataLength(entry), entry]))
+    )
+
+  describe('Nested Batches', function () {
+    async function nestedFixture() {
+      const base = await loadFixture(fixture)
+      const { multiSend, multiSendPolicy } = base
+
+      const multiSendAddress = await multiSend.getAddress()
+      const multiSendKey = createConfiguration({
+        target: multiSendAddress,
+        selector: multiSend.interface.getFunction('multiSend')?.selector,
+        operation: SafeOperation.DelegateCall,
+        policy: await multiSendPolicy.getAddress()
+      })
+
+      return { ...base, multiSendAddress, multiSendKey }
+    }
+
+    it('Should clear a depth-2 batch whose every leaf is allowed', async function () {
+      const { owner, safe, safePolicyGuard, multiSend, multiSendAddress, multiSendKey, allowPolicy } =
+        await nestedFixture()
+
+      const [first, second, innerFirst, innerSecond] = [
+        randomAddress(),
+        randomAddress(),
+        randomAddress(),
+        randomAddress()
+      ]
+      const allow = await allowPolicy.getAddress()
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          multiSendKey,
+          ...[first, second, innerFirst, innerSecond].map((target) => createConfiguration({ target, policy: allow }))
+        ]
+      })
+
+      const inner = batch(multiSend, [leaf(innerFirst), leaf(innerSecond)])
+      const outer = batch(multiSend, [leaf(first), nested(multiSendAddress, inner), leaf(second)])
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: multiSendAddress,
+          data: outer,
+          operation: SafeOperation.DelegateCall
+        })
+      ).to.not.be.reverted
+    })
+
+    it('Should wrap the denial of a nested leaf once per batch layer', async function () {
+      const {
+        owner,
+        safe,
+        safePolicyGuard,
+        multiSendPolicy,
+        multiSend,
+        multiSendAddress,
+        multiSendKey,
+        allowPolicy,
+        denyPolicy
+      } = await nestedFixture()
+
+      const [first, innerAllowed, innerDenied] = [randomAddress(), randomAddress(), randomAddress()]
+      const allow = await allowPolicy.getAddress()
+      const deny = await denyPolicy.getAddress()
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          multiSendKey,
+          createConfiguration({ target: first, policy: allow }),
+          createConfiguration({ target: innerAllowed, policy: allow }),
+          createConfiguration({ target: innerDenied, policy: deny })
+        ]
+      })
+
+      const inner = batch(multiSend, [leaf(innerAllowed), leaf(innerDenied)])
+      const outer = batch(multiSend, [leaf(first), nested(multiSendAddress, inner)])
+
+      // Each layer's `try/catch` wraps the one below it: the leaf's `AccessDenied`, then the inner
+      // batch's `PolicyReverted`, then the outer batch's.
+      const policy = await multiSendPolicy.getAddress()
+      const leafDenial = safePolicyGuard.interface.encodeErrorResult('AccessDenied', [deny])
+      const innerDenial = safePolicyGuard.interface.encodeErrorResult('PolicyReverted', [policy, leafDenial])
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: multiSendAddress,
+          data: outer,
+          operation: SafeOperation.DelegateCall
+        })
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(policy, innerDenial)
+    })
+
+    it('Should pair contexts positionally at every level', async function () {
+      const { owner, safe, safePolicyGuard, multiSend, multiSendAddress, multiSendKey } = await nestedFixture()
+
+      const recorderFactory = await ethers.getContractFactory('ContextRecorderPolicy')
+      const recorders = await Promise.all([1, 2, 3, 4].map(() => recorderFactory.deploy()))
+      const targets = recorders.map(() => randomAddress())
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          multiSendKey,
+          ...(await Promise.all(
+            recorders.map(async (recorder, i) =>
+              createConfiguration({ target: targets[i], policy: await recorder.getAddress() })
+            )
+          ))
+        ]
+      })
+
+      const [first, innerFirst, innerSecond, second] = targets
+      const contexts = ['0xaa11', '0xbb01', '0xbb02', '0xcc33']
+      const inner = batch(multiSend, [leaf(innerFirst), leaf(innerSecond)])
+      const outer = batch(multiSend, [leaf(first), nested(multiSendAddress, inner), leaf(second)])
+      // The whole inner blob sits in the outer context's second slot, which is where the nested
+      // batch reads its own two contexts from.
+      const context = encodeContexts([contexts[0], encodeContexts([contexts[1], contexts[2]]), contexts[3]])
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: multiSendAddress,
+        data: outer,
+        operation: SafeOperation.DelegateCall,
+        additionalData: context
+      })
+
+      for (const [i, recorder] of recorders.entries()) {
+        expect(await recorder.lastContext()).to.equal(contexts[i])
+      }
+    })
+
+    it('Should clear a depth-3 batch', async function () {
+      const { owner, safe, safePolicyGuard, multiSend, multiSendAddress, multiSendKey, allowPolicy } =
+        await nestedFixture()
+
+      const targets = [randomAddress(), randomAddress()]
+      const allow = await allowPolicy.getAddress()
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [multiSendKey, ...targets.map((target) => createConfiguration({ target, policy: allow }))]
+      })
+
+      const inner = batch(multiSend, targets.map(leaf))
+      const middle = batch(multiSend, [nested(multiSendAddress, inner)])
+      const outer = batch(multiSend, [nested(multiSendAddress, middle)])
+
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: multiSendAddress,
+          data: outer,
+          operation: SafeOperation.DelegateCall
+        })
+      ).to.not.be.reverted
+    })
+  })
+
+  describe('Long Batches', function () {
+    /** One `ContextRecorderPolicy` per position, so "leaf i was checked with context i" is observed. */
+    async function recorderLeaves(count: number) {
+      const recorderFactory = await ethers.getContractFactory('ContextRecorderPolicy')
+      const recorders = await Promise.all(Array.from({ length: count }, () => recorderFactory.deploy()))
+      const targets = Array.from({ length: count }, () => randomAddress())
+      // A distinct context per position, so a repeated, shifted or dropped one is visible.
+      const contexts = Array.from({ length: count }, (_, i) => ethers.zeroPadValue(ethers.toBeHex(i + 1), 32))
+      const configurations = await Promise.all(
+        recorders.map(async (recorder, i) =>
+          createConfiguration({ target: targets[i], policy: await recorder.getAddress() })
+        )
+      )
+      return { recorders, targets, contexts, configurations }
+    }
+
+    it('Should check every leaf of a four-item batch with its own context', async function () {
+      const { owner, safe, safePolicyGuard, multiSendPolicy, multiSend } = await loadFixture(fixture)
+
+      const multiSendAddress = await multiSend.getAddress()
+      const { recorders, targets, contexts, configurations } = await recorderLeaves(4)
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: multiSendAddress,
+            selector: multiSend.interface.getFunction('multiSend')?.selector,
+            operation: SafeOperation.DelegateCall,
+            policy: await multiSendPolicy.getAddress()
+          }),
+          ...configurations
+        ]
+      })
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: multiSendAddress,
+        data: batch(multiSend, targets.map(leaf)),
+        operation: SafeOperation.DelegateCall,
+        additionalData: encodeContexts(contexts)
+      })
+
+      for (const [i, recorder] of recorders.entries()) {
+        expect(await recorder.lastContext(), `leaf ${i}`).to.equal(contexts[i])
+      }
+    })
+
+    it('Should deny a five-item batch on a leaf at its last position', async function () {
+      const { owner, safe, safePolicyGuard, multiSendPolicy, multiSend, allowPolicy, denyPolicy } =
+        await loadFixture(fixture)
+
+      const multiSendAddress = await multiSend.getAddress()
+      const allow = await allowPolicy.getAddress()
+      const deny = await denyPolicy.getAddress()
+      const allowed = Array.from({ length: 5 }, () => randomAddress())
+      const denied = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: multiSendAddress,
+            selector: multiSend.interface.getFunction('multiSend')?.selector,
+            operation: SafeOperation.DelegateCall,
+            policy: await multiSendPolicy.getAddress()
+          }),
+          ...allowed.map((target) => createConfiguration({ target, policy: allow })),
+          createConfiguration({ target: denied, policy: deny })
+        ]
+      })
+
+      // Control: five allowed leaves clear, so the denial below is the leaf and not the length.
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: multiSendAddress,
+        data: batch(multiSend, allowed.map(leaf)),
+        operation: SafeOperation.DelegateCall
+      })
+
+      // Reaching position 4 is the point: a walk that stopped earlier would clear this batch.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: multiSendAddress,
+          data: batch(multiSend, [...allowed.slice(0, 4).map(leaf), leaf(denied)]),
+          operation: SafeOperation.DelegateCall
+        })
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await multiSendPolicy.getAddress(),
+          safePolicyGuard.interface.encodeErrorResult('AccessDenied', [deny])
+        )
+    })
+
+    it('Should check every leaf of a twenty-item batch and still deny on the last', async function () {
+      const { owner, safe, safePolicyGuard, multiSendPolicy, multiSend, denyPolicy } = await loadFixture(fixture)
+
+      const multiSendAddress = await multiSend.getAddress()
+      const deny = await denyPolicy.getAddress()
+      const { recorders, targets, contexts, configurations } = await recorderLeaves(20)
+      const denied = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: multiSendAddress,
+            selector: multiSend.interface.getFunction('multiSend')?.selector,
+            operation: SafeOperation.DelegateCall,
+            policy: await multiSendPolicy.getAddress()
+          }),
+          ...configurations,
+          createConfiguration({ target: denied, policy: deny })
+        ]
+      })
+
+      const context = encodeContexts(contexts)
+      expect(ethers.dataLength(context)).to.equal(20 * (32 + 32))
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: multiSendAddress,
+        data: batch(multiSend, targets.map(leaf)),
+        operation: SafeOperation.DelegateCall,
+        additionalData: context
+      })
+
+      // No early break, no repeated context, no drift between position and context slot.
+      for (const [i, recorder] of recorders.entries()) {
+        expect(await recorder.lastContext(), `leaf ${i}`).to.equal(contexts[i])
+      }
+
+      // A denial at the very last position of a long batch still denies the whole batch.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: multiSendAddress,
+          data: batch(multiSend, [...targets.map(leaf), leaf(denied)]),
+          operation: SafeOperation.DelegateCall,
+          additionalData: encodeContexts([...contexts, '0x'])
+        })
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await multiSendPolicy.getAddress(),
+          safePolicyGuard.interface.encodeErrorResult('AccessDenied', [deny])
+        )
     })
   })
 })
