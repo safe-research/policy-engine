@@ -8,6 +8,7 @@ import {
   createSafe,
   enableGuard,
   encodeAllowlistConfig,
+  encodeAllowlistEntries,
   Permission,
   execTransaction,
   randomAddress,
@@ -435,6 +436,121 @@ describe('ERC20TransferPolicy', function () {
           data: token.interface.encodeFunctionData('transfer', [recipientAddress, ethers.parseEther('100')])
         })
       ).to.not.emit(erc20TransferPolicy, 'RecipientPermissionUsed')
+    })
+  })
+
+  describe('Calldata Decoding', function () {
+    // The policy reads the recipient and amount straight out of the transaction's calldata, so what
+    // it accepts is exactly what the ABI decoder accepts: a word that is too short, or an address
+    // word with dirty high bits, reverts inside the decoder rather than reaching a policy verdict.
+    it('Should decode transfer calldata exactly, rejecting short or non-canonical words', async function () {
+      const { deployer, safe, erc20TransferPolicy, token, recipient, accessSelector } = await loadFixture(fixture)
+
+      const tokenAddress = await token.getAddress()
+      const transfer = token.interface.getFunction('transfer').selector
+      const transferFrom = token.interface.getFunction('transferFrom').selector
+      const access = await accessSelector.create(tokenAddress, transfer, SafeOperation.Call)
+      const safeAddress = await safe.getAddress()
+      await erc20TransferPolicy
+        .connect(deployer)
+        .configure(safeAddress, access, encodeAllowlistConfig([recipient.address]))
+
+      const check = (data: string) =>
+        erc20TransferPolicy
+          .connect(deployer)
+          .checkTransaction.staticCall(
+            safeAddress,
+            tokenAddress,
+            0n,
+            data,
+            SafeOperation.Call,
+            ZeroAddress,
+            '0x',
+            access
+          )
+      const magicValue = erc20TransferPolicy.interface.getFunction('checkTransaction').selector
+      const word = (value: string) => ethers.zeroPadValue(value, 32)
+      const amount = ethers.zeroPadValue('0x01', 32)
+
+      // Too short to hold a selector at all: read as `bytes4(0)`, which is not a transfer.
+      await expect(check('0x')).to.be.revertedWithCustomError(erc20TransferPolicy, 'InvalidTransfer')
+      await expect(check(transfer.slice(0, 8))).to.be.revertedWithCustomError(erc20TransferPolicy, 'InvalidTransfer')
+
+      // The selector is right but the arguments are not all there.
+      await expect(check(transfer)).to.be.revertedWithoutReason()
+      await expect(check(ethers.concat([transfer, word(recipient.address)]))).to.be.revertedWithoutReason()
+
+      expect(await check(ethers.concat([transfer, word(recipient.address), amount]))).to.equal(magicValue)
+      // Trailing words past the declared arguments are ignored, as the decoder ignores them.
+      expect(await check(ethers.concat([transfer, word(recipient.address), amount, amount]))).to.equal(magicValue)
+
+      // An address word whose high bits are not clear is not a valid `address`.
+      const dirty = ethers.concat(['0xffffffffffffffffffffffff', recipient.address])
+      await expect(check(ethers.concat([transfer, dirty, amount]))).to.be.revertedWithoutReason()
+
+      // `transferFrom` carries three arguments and its recipient is the second of them.
+      await expect(check(ethers.concat([transferFrom, word(recipient.address), amount]))).to.be.revertedWithoutReason()
+      expect(await check(ethers.concat([transferFrom, word(safeAddress), word(recipient.address), amount]))).to.equal(
+        magicValue
+      )
+      await expect(
+        check(ethers.concat([transferFrom, word(recipient.address), word(safeAddress), amount]))
+      ).to.be.revertedWithCustomError(erc20TransferPolicy, 'Unauthorized')
+    })
+  })
+
+  describe('Multi-Entry Configuration', function () {
+    it('Should write every entry of a recipient list, with its own permission', async function () {
+      const { deployer, safe, erc20TransferPolicy, token, accessSelector } = await loadFixture(fixture)
+
+      const tokenAddress = await token.getAddress()
+      const access = await accessSelector.create(
+        tokenAddress,
+        token.interface.getFunction('transfer').selector,
+        SafeOperation.Call
+      )
+      const safeAddress = await safe.getAddress()
+      const account = (i: number) => ethers.getAddress(`0x${i.toString(16).padStart(2, '0').repeat(20)}`)
+      const permissions = [Permission.Always, Permission.Once, Permission.None]
+      const entries = (count: number) =>
+        Array.from({ length: count }, (_, i) => ({ account: account(i + 1), permission: permissions[i % 3] }))
+      const untouched = account(0xee)
+
+      // Lists long enough that a loop stopping early, or reusing one entry's permission for the
+      // rest, would show up.
+      for (const count of [2, 3, 4, 5, 20]) {
+        const list = entries(count)
+        const data = encodeAllowlistEntries(list)
+        expect(await erc20TransferPolicy.connect(deployer).configure.staticCall(safeAddress, access, data)).to.equal(
+          true
+        )
+        await erc20TransferPolicy.connect(deployer).configure(safeAddress, access, data)
+
+        for (const { account: recipient, permission } of list) {
+          expect(
+            await erc20TransferPolicy.getRecipientPermission(deployer, safeAddress, tokenAddress, recipient)
+          ).to.equal(permission)
+        }
+        // Configuring is additive: a recipient the list never names keeps whatever it had.
+        expect(
+          await erc20TransferPolicy.getRecipientPermission(deployer, safeAddress, tokenAddress, untouched)
+        ).to.equal(Permission.None)
+      }
+
+      // A repeated account is written twice, so the last entry is the one that stands.
+      const repeated = account(0x77)
+      await erc20TransferPolicy.connect(deployer).configure(
+        safeAddress,
+        access,
+        encodeAllowlistEntries([
+          { account: repeated, permission: Permission.Once },
+          { account: account(0x88), permission: Permission.Once },
+          { account: repeated, permission: Permission.Always }
+        ])
+      )
+      expect(await erc20TransferPolicy.getRecipientPermission(deployer, safeAddress, tokenAddress, repeated)).to.equal(
+        Permission.Always
+      )
     })
   })
 })
