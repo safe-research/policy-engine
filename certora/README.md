@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-108 of 108 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+110 of 110 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,15 +21,15 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 47 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 48 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 28 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 47 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
-| `certora/harnesses/` | 10 files, 13 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `MultiSendPolicyHarness`, `EngineRecorderHarness`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `RealSafeHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`, `SafenetHarness`. |
+| `certora/specs/` | 29 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
+| `certora/conf/` | 48 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/harnesses/` | 11 files, 14 contracts: `BindingHarness`, `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `MultiSendPolicyHarness`, `EngineRecorderHarness`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `RealSafeHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`, `SafenetHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
 | `certora/VERIFICATION_REPORT.md` | Results, property table, assumption table, findings, not-proven list. |
@@ -46,7 +46,7 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 24 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Real Safe in scene | The Safe a rule talks about is Safe v1.5.0 itself, inherited unchanged by `RealSafeHarness` (`L-SAFE-1`), in the 8 policy confs (`IncreasedThreshold.conf`, `IncreasedThresholdArgs.conf`, `IncreasedThresholdOpenSafe.conf`, `CoSigner.conf`, `CoSignerArgs.conf`, `CoSignerModulePath.conf`, `Safenet.conf`, `SafenetArgs.conf`), whose rows bind the verdict to Safe's own nonce, transaction hash, owner list and threshold. Safe's own source does not compile via IR, so those confs carry `solc_via_ir_map`, `solc_evm_version_map` and `solc_optimize_map` in place of the three scalar flags: the verified policy keeps the suite's settings and `RealSafeHarness` compiles for `paris` with the optimizer off, the settings `hardhat.config.ts:68-77` builds Safe's own source with. The fourth setting, the compiler binary, is one scalar per conf, so that code is verified under `solc-0.8.30` rather than the 0.8.28 the repo pins for it (`L-SAFE-1`). |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 47 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 48 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -322,12 +322,13 @@ The 5 cases of `test/increasedThresholdPolicy.spec.ts` under `Signature modes` r
 | `WAIVED-H-4` | Safe `checkNSignatures` internals (`GS020/021/025/026`, `v` modes, owner order, `approvedHashes`) | waived: safe is environment |
 | `WAIVED-H-9` | CoSigner `InvalidSelector` (`P/CoSignerPolicy:34`) is dead code | waived: no property can cover unreachable code; cosmetic report item |
 
-### Safenet
+### Safenet and Binding
 
 | conf | spec | rules | status |
 |---|---|---|---|
 | `Safenet.conf` | `Safenet.spec` | 26 | green, SafenetPolicy in isolation: the revert characterisation over value, module, context shape, a known epoch key, nonce, unspent and the FROST verdict, the `safeTxHash` clause of `R_SN_1_binding` blind under `L-BIND-9` (`R_SN_1`, `R_SN_1_zeroNonce`, `R_SN_1_failClosed`, `R_SN_1_gatesBeforeVerdict`, `R_SN_1_binding`, `R_SN_1_verdictNotTransferable`, `R_SN_1_anyCalldata`); a non-zero module reverts before the verdict (`R_SN_2`); a non-reverting check marks the nonce spent and touches nothing else (`R_SN_3`); once per nonce (`R_SN_4`, `R_SN_4_emptyContext`, `R_SN_4_emptyData`); `known` changes only in `updateEpoch`, false to true (`R_SN_5`, `R_SN_5_gettersAgree`); the rollover in both directions (`R_SN_6`, `R_SN_6_effect`, `R_SN_6_anchor`); the zero key is never trusted (`INV_SN_1`); `updateEpoch` is permissionless (`R_SN_7`); `$spent` write provenance (`R_SN_8`, `R_SN_8_checkKeys`); `configure` returns `true`, reverts iff `msg.value != 0` and has no storage effect (`R_SN_9`, `R_SN_9_anyCalldata`); witnesses `W_SN_1a`, `W_SN_1b` and `W_SN_1c` |
 | `SafenetArgs.conf` | `SafenetArgs.spec` | 2 | `R-SN-1` green, with the `W_SN_args` witness |
+| `Binding.conf` | `Binding.spec` | 17 | green, CoSignerPolicy, IncreasedThresholdPolicy and SafenetPolicy in one scene with Safe v1.5.0's hash mirrors: `R_BIND_1` and its pins state that each signature verdict receives the Safe's EIP-712 transaction hash with zeroed refund fields at `nonce - 1`, their output-level asserts blind under `L-BIND-9` and two steps of the chain open under `WAIVED-B-3`; `FROST.verify` sees the decoded key and signature over the transaction proposal message (`R_BIND_2`); `transactionProposal` is injective in its five fields, modulo keccak (`R_BIND_3`); in `updateEpoch`, `FROST.verify` is called with the parent key over the epoch rollover message (`R_BIND_4`); with four `W_BIND_*` witnesses |
 
 Tests: `test/safenetPolicy.spec.ts`, 11 cases under `Epoch rollover: signature binding` and `Curve checks`.
 
@@ -335,10 +336,21 @@ The rollover cases stand behind `WAIVED-B-2`.
 
 The curve cases stand behind `WAIVED-H-2`.
 
+No repo test covers the Binding unit, whose subject is the hash derivation itself. Its confs put the same mock Safe in scene as the guard scenes, `BindingHarness` subclassing `SafeMockHarness` so that `chainid()` and `this` can be lifted to parameters (`L-W0-1`, `L-BIND-8`), and `WAIVED-B-3` bounds what stays open.
+
 #### Ids introduced here
 
 | id | claim | discharge |
 |---|---|---|
+| `L-BIND-1` | The three cryptographic verdicts are capture-only, and two of them never revert where the CoSigner, IncreasedThreshold and Safenet specs keep a reverting verdict, `requireNonZero` rejecting `(0,0)` only | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-2` | Two things: keccak is modelled as an injective function, so a hash collision is out of model; and the Safe the policies call is the modelled one, since for any other `safe` the `ISafe` STATICCALLs take the `default NONDET` branch | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-4` | Five Safe v1.5.0 mirrors: `domainHashOf` (`Safe.sol:389-399`) and `safeTxHashOf` (`:404-473`), with `chainid()` and `this` lifted to parameters; `structHashOf` its first half; `eip712Of` it without assembly; `dataHashOf` a calldata-slice keccak | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-5` | The IncreasedThreshold rules are proven for Safes of 1..4 owners | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-6` | The unit's one instance of the L-POL-CTX defect: `R_BIND_1` carries two free CVL `bytes` (`data1`, `data2`), but `conf/Binding.conf` leaves `precise_bitwise_ops` unset, which is the sound side for an `assert`, so the pair with exactly one empty buffer is reached. `R_BIND_1_emptyData` is kept as a regression marker against a conf that turns the flag on | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-7` | Executions hashing a `bytes` value longer than 3200 bytes are dropped (instance of L-W0-HASH) | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-8` | The one link of the hash chain `R_BIND_1` asserts that CVL cannot close on 8.19.1: that Safe v1.5.0's `keccak256(add(ptr, 30), 66)` (`Safe.sol:461-470`, copied verbatim into `SafeMockHarness.getTransactionHash`) computes `keccak256(0x1901 \|\| domainSeparator \|\| structHash)` | job [ce659059](https://prover.certora.com/output/950385/ce6590595b154c8697240b6cc38c292a?anonymousKey=536039cb7e18451c9afd4d847891857c31a5f53d) |
+| `L-BIND-10` | Initialisation of the observation ghosts is spec-local instrumentation that a `persistent` ghost havocs at rule start, not contract state, the Binding instance of L-COS-5 | argument |
+| `L-BIND-11` | The rules that rebuild the co-signed message in CVL require `nonce() >= 1`, the parent property's own hypothesis, because the `nonce() - 1` subtraction each policy performs panics 0x11 at nonce 0 | argument |
 | `L-SN-1` | The FROST verdict is not computed: it is a free `persistent ghost` function of the key, signature and message, and the summary reverts when it is false at both call sites | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
 | `L-SN-2` | The model rejects `(0,0)` only, where the real function also rejects every off-curve non-zero point (`Secp256k1.sol:181-183,226-233`) | test/safenetPolicy.spec.ts: "Should reject a non-zero genesis group key that is off the curve" |
 | `L-SN-3` | The two message constructions are free deterministic uninterpreted functions of their arguments rather than `NONDET`, while `domain` keeps `NONDET` under L-SN-14 | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
@@ -354,6 +366,8 @@ The curve cases stand behind `WAIVED-H-2`.
 | `L-SN-14` | The EIP-712 domain-separator derivation is not modelled: `NONDET` replaces `ConsensusMessages.sol:45-53`, and every message is built from the immutable the constructor stored (`SafenetPolicy.sol:42`) | test/safenetPolicy.spec.ts |
 | `L-SN-15` | `ISafe.getTransactionHash` is summarized capture-only and the real hash code does not run, so a rule that reads its result asserts the arguments of the derivation, never a recomputed offset-30 hash | job [43293a9c](https://prover.certora.com/output/950385/43293a9c9b60419f87d08be2f70a54a8?anonymousKey=9473b4e252fa9a32363496ea0f63461fd3f5496e) |
 | `W-SN-1` | a well-formed attestation clearing, and a rollover recording a new trusted pair | witness row |
+| `WAIVED-B-1` | Refund fields (`safeTxGas`, `baseGas`, `gasPrice`, `gasToken`, `refundReceiver`) never reach any policy, `IPolicy.sol:36-45`, so no CVL statement can distinguish them | waived: documented non-binding, not a rule |
+| `WAIVED-B-3` | Two steps of the hash chain `R_BIND_1` asserts: that Safe v1.5.0's `keccak256(add(ptr, 30), 66)` computes the standard `keccak256(0x1901 \|\| domainSeparator \|\| structHash)`, and that `getTransactionHash(args)` equals the parameterized mirror | waived: not expressible on 8.19.1, measured rather than asserted: a keccak pre-image beginning 30 bytes into a memory word is not decomposed by the prover, so that hash is neither injective nor equal to the same bytes written otherwise (measured by job [76273dee](https://prover.certora.com/output/950385/76273dee762c4fa6bb48e24f3bd0a1af?anonymousKey=9f5022d1846e9a54276efe22e86aeaf0bd1c0eb8), the `BindingHash` probe, whose conf is not part of this tree, so the job cannot be re-run from it) |
 | `WAIVED-H-1` | FROST/Schnorr cryptographic soundness (`FROST.verify`, `challenge`, `mulmuladd`, ecrecover trick, `_divmod`) | waived: not expressible; verdict symbolic |
 | `WAIVED-H-2` | On-curve check for non-zero points (`_satisfiesCurveEquation`) | waived: modelled zero-point-only, the superset `L-SN-2` records |
 
