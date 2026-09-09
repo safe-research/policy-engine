@@ -21,14 +21,14 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 15 of the 20 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 16 of the 21 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
 | `certora/specs/` | 8 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. |
-| `certora/conf/` | 20 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/conf/` | 21 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
 | `certora/harnesses/` | 6 files, 7 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
@@ -43,9 +43,9 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Id namespaces | `L-<UNIT>-<n>` and named forms such as `L-W0-HASH` for an assumption, `WAIVED-<UNIT>-<n>` for a waived claim, `B-<n>` for a documentation finding and `D-0<nn>` for a modelling decision; a `require`, summary, ghost or flag resting on one carries a trailing comment naming the id. |
 | Evidence | The job id in the report's property table is the authority for a row, and a conf's `rule` filter defines the rule set that job graded, so a rule outside the filter was not run by it. Where half a spec needs a different flag or budget, that spec is split across a conf pair and the unit table below names both confs; every other filter is a budget split within one unit. |
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
-| Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 16 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
+| Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 17 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 15 of the 20 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 16 of the 21 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -139,6 +139,7 @@ The same cases stand behind `WAIVED-EC-1`.
 | `EngineCheckDelegate.conf` | `EngineCheck.spec` | 1 | green: the guard never delegatecalls, every parametric node of `R_EC_14_noDelegateCall` included |
 | `EngineCheckDelegateApply.conf` | `EngineCheck.spec` | 1 | `R-EC-14` green, stating the `applyConfiguration` node of `R_EC_14_noDelegateCall` again at `n <= 1` (`R_EC_14_noDelegateCall_apply1`) |
 | `EngineCheckLaw.conf` | `EngineCheck.spec` | 10 | `R-EC-2`, `R-EC-4`, `R-EC-9` to `R-EC-11`, `R-EC-13`, `R-EC-16` green |
+| `EngineCheckNested.conf` | `EngineCheck.spec` | 5 | green: every top-level policy invocation carries the caller's own arguments on the owner path (`R_EC_7`) and on the module path, the module coming from state (`R_EC_7_module`); the owner-path context is the envelope payload when present and empty otherwise (`R_EC_8_owner`); witnesses that the mid-check state is reached through the hook (`W_EC_1_g`) and that a nested engine call targeting the hatch is refused when the top-level check is module-authorised (`W_EC_1_j`) |
 
 Tests: `test/safePolicyGuardExecution.spec.ts`, 4 cases under `Spend lifetime`, the concrete `afterExecution` behaviour.
 
@@ -155,7 +156,7 @@ The same cases stand behind `WAIVED-S-4`.
 | `L-EC-4` | Hashing on the check path enters only through the recorder mock's `keccak(data)` and `keccak(context)`, the Lib reader set's `payloadHash` and `keccak(abi.encode(Configuration[]))` (`G:390`), all bounded at 3200, except in the EngineCheck variants unit, where the conf whose rules run the configuration array at one entry bounds at 448 | test/safePolicyGuardContext.spec.ts |
 | `L-EC-5` | Per-row `default` for the engine call to the policy (`PolicyEngine.sol:200`): `NONDET` for the closed-scene check rows: the engine-outcome, hook, invocation, call-discipline and witness rows; `HAVOC_ECF` for the sentinel frame row and its invariant and `HAVOC_ALL` for the deny-by-default and liveness rows, both in the EngineCheck variants unit | job [93dcfd18](https://prover.certora.com/output/950385/93dcfd187d8049fdb1129e1b7ecf659f?anonymousKey=2112208b566bc2e5c8b5470ad84902420b84e0e2) |
 | `L-EC-7` | Every non-zero configured policy had code at configuration time returning at least 32 bytes or reverting, the raw-revert class being fail-closed and out of model | test/policyEngine.spec.ts: "Should revert without a reason when a configured policy returns fewer than 32 bytes" |
-| `L-EC-9` | The mid-check rules start from `S != 0` |  |
+| `L-EC-9` | The mid-check rules start from `S != 0` | job [4f00ea39](https://prover.certora.com/output/950385/4f00ea3924fa48588f78b9b44fea248d?anonymousKey=48b56a581eaf0b75f8b9af05c23a9f7f9aad52ae) |
 | `L-EC-11` | The iff rows run with `MockPolicyHarness.checkMode()` pinned to {ACCEPT, WRONG_MAGIC, REVERTS}, so its four re-entrant modes (CALL_CONFIG, REENTER_GUARD_TX, REENTER_GUARD_MODULE, REENTER_ENGINE) are out of the iff run | job [2ba73a89](https://prover.certora.com/output/950385/2ba73a89cfee41ca996ea316c7e1b629?anonymousKey=334be8203f48951c877040d7bf9fb59a862a35ff) |
 | `L-EC-12` | The nested engine call's `data` is the outer call's `data` at skip 0, so CVL can name it when computing the nested `getPolicy` expectation | argument |
 | `L-EC-13` | The iff rows range over a typed `operation in {CALL, DELEGATECALL}` domain; the hook-closure rule and the not-checking engine rule cover the raw `calldataarg` domain instead | argument |
