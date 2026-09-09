@@ -98,6 +98,13 @@ hook STATICCALL(uint g, address addr, uint argsOffset, uint argsLength, uint ret
     }
 }
 
+// L-CFG-FRAME: zeroes the opcode-hook observers, which start at an arbitrary value.
+function resetFrame() {
+    require gCalls == 0 && gConfigureCalls == 0 && gOtherSelectorCalls == 0 && gValueCalls == 0
+        && gDelegateCalls == 0 && gStatics == 0 && gStaticsAfterCall == 0;
+    require forall address a. !gCalled[a] && !gStaticCalled[a];
+}
+
 // #101's application window. `_expired(v)` is `block.timestamp >= v + EXPIRY` in checked arithmetic
 // (SafePolicyGuard.sol:329-330), so the sum reverts with a Panic instead of answering when it overflows,
 // and `expiredOrPanics` is the disjunction a revert-iff needs. EXPIRY stays symbolic throughout: the
@@ -106,6 +113,72 @@ hook STATICCALL(uint g, address addr, uint argsOffset, uint argsLength, uint ret
 definition windowOverflows(uint256 v) returns bool = to_mathint(v) + to_mathint(EXPIRY()) > max_uint256;
 definition expired(uint256 t, uint256 v) returns bool = to_mathint(t) >= to_mathint(v) + to_mathint(EXPIRY());
 definition expiredOrPanics(uint256 t, uint256 v) returns bool = expired(t, v) || windowOverflows(v);
+
+// Policy addresses whose configure verdict this scene fixes; 0 clears the entry and calls nothing.
+definition inScene(address p) returns bool =
+    p == 0 || p == allow || p == deny || p == oneTimeAllow || p == mockPolicy;
+
+// configure verdict of entry i in the scene: Allow and Deny accept; OneTimeAllow reverts iff data.length < 32 or word0
+// > 1; MockPolicyHarness follows configureMode; policy == 0 makes no call.
+function entryOk(SafePolicyGuard.Configuration[] c, uint256 i) returns bool {
+    address p = configPolicy(c, i);
+    if (p == 0 || p == allow || p == deny) {
+        return true;
+    }
+    if (p == oneTimeAllow) {
+        return configDataLength(c, i) >= 32 && configDataWord0(c, i) <= 1;
+    }
+    return mockPolicy.configureMode() == MockPolicyHarness.ConfigureMode.TRUE
+        || mockPolicy.configureMode() == MockPolicyHarness.ConfigureMode.RECORD;
+}
+
+// The policy the engine leaves at k: the last index carrying that key wins.
+function lastPolicyForKey(SafePolicyGuard.Configuration[] c, AccessSelector.T k) returns address {
+    uint256 n = c.length;
+    address p = 0;
+    if (n > 0) { if (configKey(c, 0) == k) { p = configPolicy(c, 0); } }
+    if (n > 1) { if (configKey(c, 1) == k) { p = configPolicy(c, 1); } }
+    if (n > 2) { if (configKey(c, 2) == k) { p = configPolicy(c, 2); } }
+    return p;
+}
+
+function keyInArray(SafePolicyGuard.Configuration[] c, AccessSelector.T k) returns bool {
+    uint256 n = c.length;
+    bool hit = false;
+    if (n > 0) { if (configKey(c, 0) == k) { hit = true; } }
+    if (n > 1) { if (configKey(c, 1) == k) { hit = true; } }
+    if (n > 2) { if (configKey(c, 2) == k) { hit = true; } }
+    return hit;
+}
+
+function nonZeroPolicyCount(SafePolicyGuard.Configuration[] c) returns mathint {
+    uint256 n = c.length;
+    mathint m0 = 0;
+    mathint m1 = 0;
+    mathint m2 = 0;
+    if (n > 0) { if (configPolicy(c, 0) != 0) { m0 = 1; } }
+    if (n > 1) { if (configPolicy(c, 1) != 0) { m1 = 1; } }
+    if (n > 2) { if (configPolicy(c, 2) != 0) { m2 = 1; } }
+    return m0 + m1 + m2;
+}
+
+function allEntriesInScene(SafePolicyGuard.Configuration[] c) returns bool {
+    uint256 n = c.length;
+    bool ok = true;
+    if (n > 0) { if (!inScene(configPolicy(c, 0))) { ok = false; } }
+    if (n > 1) { if (!inScene(configPolicy(c, 1))) { ok = false; } }
+    if (n > 2) { if (!inScene(configPolicy(c, 2))) { ok = false; } }
+    return ok;
+}
+
+function someEntryFails(SafePolicyGuard.Configuration[] c) returns bool {
+    uint256 n = c.length;
+    bool bad = false;
+    if (n > 0) { if (!entryOk(c, 0)) { bad = true; } }
+    if (n > 1) { if (!entryOk(c, 1)) { bad = true; } }
+    if (n > 2) { if (!entryOk(c, 2)) { bad = true; } }
+    return bad;
+}
 
 // R-CFG-4: requestConfiguration(r) reverts iff paid, pending inside its window, or overflowing, and otherwise
 // matures that entry alone at T + DELAY. Meaning changed by #101: a set entry no longer blocks the request
@@ -199,6 +272,29 @@ rule R_CFG_11(env e1, env e2, bytes32 r, SafePolicyGuard.Configuration[] c) {
         "and only while the EXPIRY window of that request is still open (#101)";
 }
 */
+
+// R-CFG-12: the application window of #101 closes. Stated at n <= 1 in the verdict-fixed scene, with the two gates
+// R-CFG-6(a) already covers (requested, matured) and the entry-verdict clause discharged, so what is left is exactly
+// the window: the call reverts iff block.timestamp has reached validFrom + EXPIRY, which is RootConfigurationExpired
+// (SafePolicyGuard.sol:394). The error name itself is not observable in CVL 8.19.1 for a direct call, as WAIVED-EC-3
+// records for the hooks; test/safePolicyGuardDelayedConfiguration.spec.ts asserts the name.
+rule R_CFG_12(env e, SafePolicyGuard.Configuration[] c) {
+    require c.length <= 1;
+    require allEntriesInScene(c);
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+    require e.msg.value == 0 && !someEntryFails(c);
+
+    bytes32 root = configurationRoot(c);
+    uint256 v0 = rootConfigured(e.msg.sender, root);
+    require v0 != 0 && e.block.timestamp >= v0;   // requested and matured: R_CFG_6a_one owns the other two gates
+    bool past = expiredOrPanics(e.block.timestamp, v0);
+
+    applyConfiguration@withrevert(e, c);
+
+    assert lastReverted <=> past,
+        "a requested, matured, otherwise sound applyConfiguration reverts iff block.timestamp >= validFrom + EXPIRY";
+}
+
 // R-CFG-12, the second half: an expired root is spent, so the same root is requestable again with no invalidateRoot
 // in between, and the fresh request restarts the delay. The overflow exclusion is the write's own checked
 // `block.timestamp + DELAY`, the same arithmetic R-CFG-4 states as a revert cause; nothing about the
@@ -282,3 +378,91 @@ rule R_CFG_6a_one(env e, SafePolicyGuard.Configuration[] c) {
         "an unrequested, immature or expired root never applies, and the entry point is not payable";
 }
 
+// R-CFG-11 at n <= 1: a configuration applies only in [T + DELAY, T + DELAY + EXPIRY) after its request at T, the upper
+// end being #101's.
+rule R_CFG_11_one(env e1, env e2, bytes32 r, SafePolicyGuard.Configuration[] c) {
+    require e1.msg.sender == e2.msg.sender;
+    require c.length <= 1;
+    require configurationRoot(c) == r;
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+
+    requestConfiguration(e1, r);
+    applyConfiguration@withrevert(e2, c);
+    bool reverted = lastReverted;   // read before DELAY() and EXPIRY()
+
+    assert !reverted => e2.block.timestamp >= e1.block.timestamp + DELAY(),
+        "a configuration applies only DELAY seconds after its request";
+    assert !reverted => e2.block.timestamp < e1.block.timestamp + DELAY() + EXPIRY(),
+        "and only while the EXPIRY window of that request is still open (#101)";
+}
+
+// R-CFG-8 (field half) at n <= 1.
+rule R_CFG_8_fields_one(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configuration[] c2, uint256 i) {
+    require c1.length <= 1 && c2.length <= 1;
+    require configurationRoot(c1) == configurationRoot(c2);
+    require i < c1.length;
+    assert configTarget(c1, i) == configTarget(c2, i)
+        && configSelector(c1, i) == configSelector(c2, i)
+        && configOperation(c1, i) == configOperation(c2, i)
+        && configPolicy(c1, i) == configPolicy(c2, i)
+        && configDataLength(c1, i) == configDataLength(c2, i)
+        && configDataHash(c1, i) == configDataHash(c2, i),
+        "equal roots => every entry agrees on target, selector, operation, policy, data length and data hash";
+}
+
+// R-CFG-6(b) at n <= 1. Under #101, (a) closes the window at its far end too: a matured root past
+// T + DELAY + EXPIRY reverts here.
+rule R_CFG_6b_one(env e, SafePolicyGuard.Configuration[] c) {
+    // Load-bearing: someEntryFails predicts the verdict only for in-scene entries.
+    require c.length <= 1;
+    require allEntriesInScene(c);
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+
+    bytes32 root = configurationRoot(c);
+    uint256 v0 = rootConfigured(e.msg.sender, root);
+    bool necessity = e.msg.value != 0 || v0 == 0 || e.block.timestamp < v0
+        || expiredOrPanics(e.block.timestamp, v0);
+    bool badEntry = someEntryFails(c);
+
+    applyConfiguration@withrevert(e, c);
+
+    assert lastReverted <=> (necessity || badEntry),
+        "reverts iff the root is missing/immature/expired/paid, or some entry's configure verdict is not OK";
+}
+
+// R-CFG-6(c) at n <= 1: the root is consumed, each named key holds the last entry's policy, and the guard's own (safe,
+// access, data) reaches configure.
+rule R_CFG_6c_one(env e, SafePolicyGuard.Configuration[] c, uint256 i, address sx, AccessSelector.T kx,
+                  address s2, bytes32 r2) {
+    require c.length <= 1;
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+    require i < c.length;
+    require mockPolicy.configureCalls() == 0;
+    resetFrame();
+
+    bytes32 root = configurationRoot(c);
+    address polOther0 = policyAt(sx, kx);
+    uint256 other0 = rootConfigured(s2, r2);
+    uint256 confBefore = mockPolicy.configureCalls();
+
+    applyConfiguration(e, c);
+
+    assert rootConfigured(e.msg.sender, root) == 0, "the applied root is consumed";
+    assert policyAt(e.msg.sender, configKey(c, i)) == lastPolicyForKey(c, configKey(c, i)),
+        "each named key holds the last entry's policy (last-write-wins)";
+    assert (sx != e.msg.sender || !keyInArray(c, kx)) => policyAt(sx, kx) == polOther0,
+        "no other (safe, key) entry of $policies changes";
+    assert (s2 != e.msg.sender || r2 != root) => rootConfigured(s2, r2) == other0,
+        "no other root changes";
+    assert gConfigureCalls == nonZeroPolicyCount(c),
+        "configure is called exactly once per non-zero entry";
+    assert (c.length == 1 && configPolicy(c, 0) == mockPolicy
+            && mockPolicy.configureMode() == MockPolicyHarness.ConfigureMode.RECORD)
+        => (mockPolicy.configureCalls() > confBefore
+            && mockPolicy.lastConfigureSender() == currentContract
+            && mockPolicy.lastConfigureSafe() == e.msg.sender
+            && mockPolicy.lastConfigureAccess() == configKey(c, 0)
+            && mockPolicy.lastConfigureDataLength() == configDataLength(c, 0)
+            && mockPolicy.lastConfigureDataHash() == configDataHash(c, 0)),
+        "configure receives (safe = S, access = key_0, data = c[0].data) from the guard itself";
+}
