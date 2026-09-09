@@ -162,6 +162,13 @@ rule R_CFG_6a(env e, SafePolicyGuard.Configuration[] c) {
         "an unrequested, immature or expired root never applies, and the entry point is not payable";
 }
 */
+// R-CFG-8: two configuration arrays with the same root have the same length.
+rule R_CFG_8_length(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configuration[] c2) {
+    require c1.length <= 3 && c2.length <= 3;
+    require configurationRoot(c1) == configurationRoot(c2);
+    assert c1.length == c2.length, "equal roots => equal length";
+}
+
 
 // Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
 /*
