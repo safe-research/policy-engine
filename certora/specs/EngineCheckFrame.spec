@@ -35,6 +35,40 @@ use invariant sentinelsClear filtered {
     f -> f.selector != sig:checkTransaction(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,bytes).selector
 }
 
+// R-EC-1: from any state with S == s != 0 (reached by W_EC_1_g) and M == m, every non-reverting method of the guard
+// leaves S and M unchanged; the Safe hooks are excluded (L-EC-INVFILTER).
+rule R_EC_1(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c, address s, address m)
+    filtered { f -> !f.isView && !f.isPure
+        && f.selector != sig:checkTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,uint256,uint256,uint256,address,address,bytes,address).selector
+        && f.selector != sig:checkModuleTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,address).selector
+        && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+{
+    require e.msg.sender != 0;
+    require checkingSafe() == s && s != 0 && checkingModule() == m;
+
+    if (f.selector == sig:configureImmediately(SafePolicyGuard.Configuration[]).selector) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+
+    assert checkingSafe() == s, "$checkingSafe is immutable while a check is in progress";
+    assert checkingModule() == m, "$checkingModule is immutable while a check is in progress";
+}
+
+// The check-path entry points: both Safe hooks, the engine entry, and the `tryCheck` scaffolding.
+definition isCheckPath(method f) returns bool =
+    f.selector == sig:checkTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,uint256,uint256,uint256,address,address,bytes,address).selector
+    || f.selector == sig:checkModuleTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,address).selector
+    || f.selector == sig:checkTransaction(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,bytes).selector
+    || f.selector == sig:tryCheck(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,bytes).selector;
+
+definition isImmediateSel(method f) returns bool =
+    f.selector == sig:configureImmediately(SafePolicyGuard.Configuration[]).selector;
+definition isRequestSel(method f) returns bool = f.selector == sig:requestConfiguration(bytes32).selector;
+definition isInvalidateSel(method f) returns bool = f.selector == sig:invalidateRoot(bytes32).selector;
+
 persistent ghost mapping(address => bool) gCalled;
 
 // No Sstore/Sload hook: it would trigger a scene-wide storage analysis that SafeMockHarness.getStorageAt defeats, after
@@ -43,5 +77,45 @@ hook CALL(uint g, address addr, uint value, uint argsOffset, uint argsLength, ui
     if (executingContract == currentContract) {
         gCalled[addr] = true;
     }
+}
+
+function resetFrame() {
+    require forall address a. !gCalled[a];
+}
+
+// R-CFG-2 re-instantiated in the EngineCheck scene, a second leaf of that row beside the EngineConfigFrame* confs:
+// every $policies or rootConfigured namespace f writes lies in {sender} u C_f, and on the check path the guard writes
+// neither.
+rule EC_ConfigFrame(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c,
+                    address x, AccessSelector.T k, bytes32 r)
+    filtered { f -> !f.isView && !f.isPure
+        && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+{
+    require e.msg.sender != 0;
+    resetFrame();
+    address pol0 = policyAt(x, k);
+    uint256 root0 = rootConfigured(x, r);
+
+    if (isImmediateSel(f)) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+
+    bool wrotePolicy = policyAt(x, k) != pol0;
+    bool wroteRoot = rootConfigured(x, r) != root0;
+
+    assert wrotePolicy => (x == e.msg.sender || gCalled[x]),
+        "a $policies namespace that changed is the sender's or a callee's";
+    assert wroteRoot => (x == e.msg.sender || gCalled[x]),
+        "a rootConfigured namespace that changed is the sender's or a callee's";
+    // applyConfiguration is filtered out of this rule; the EngineConfigFrame* confs carry that node of R-CFG-2.
+    assert (wrotePolicy && x == e.msg.sender) => (isImmediateSel(f) || gCalled[x]),
+        "$policies[S][.] changes only via configureImmediately or a re-entrant callee";
+    assert isCheckPath(f) => ((wrotePolicy || wroteRoot) => gCalled[x]),
+        "on the check path the guard's own code writes neither mapping in any namespace";
+    assert (isRequestSel(f) || isInvalidateSel(f)) => !gCalled[x],
+        "requestConfiguration/invalidateRoot make no outgoing call (C_f is empty)";
 }
 
