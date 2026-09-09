@@ -29,13 +29,13 @@
 // Which rules rest on L-CFG-DECODE: every rule of this file, that is R_CFG_9_gate, R_CFG_9_gate_live,
 // R_CFG_10, R_CFG_10_notEnabled and R_CFG_9_probeArgs, and no other rule of the suite. A `methods` block
 // entry is file-wide, so the summary is confined to this file rather than added to
-// specs/EngineConfig.spec, where it would reach the 11 rules of that file that call
-// `configureImmediately` across four confs, and would leave R_CFG_9_probe (which counts the probe
+// specs/EngineConfig.spec, where it would reach the 16 rules of that file that call
+// `configureImmediately` across five confs, and would leave R_CFG_9_probe (which counts the probe
 // STATICCALLs the summary removes) asserting three trivially true facts.
 //
 // The four gate rules are the ones specs/EngineConfig.spec states, assert messages included, with two
-// added `require` lines each; the unsummarized originals, which reproduce the pointer-analysis defect
-// L-CFG-DECODE cuts, are commented out in specs/EngineConfig.spec.
+// added `require` lines each; the unsummarized originals stay in specs/EngineConfig.spec as the
+// reproduction of the pointer-analysis defect L-CFG-DECODE cuts, and no conf of certora/conf runs them.
 //
 // File-wide, as in specs/EngineConfig.spec: L-CFG-SCENE, L-CFG-PROBE, L-CFG-GATE, L-CFG-SLOTMOCK, L-W0-3.
 

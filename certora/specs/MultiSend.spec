@@ -3,7 +3,7 @@
  * an additive subclass exposing the three real internal decoders. L-MS-1 summarizes the one external
  * call, `IPolicyEngine(msg.sender).checkTransaction` at MultiSendPolicy.sol:39, by a recording CVL
  * function with free per-call oracles; it drops the engine's own behaviour (R-EC-7, R-EC-9) and nested
- * batches.
+ * batches (R-MS-9), and `specs/MultiSendPin.spec` re-proves R-MS-4..7 against a real contract.
  * File-wide: bounds L-MS-2 and L-MS-4; domain L-MS-7, an instance of L-POL-6 and L-POL-9; defect L-POL-CTX.
  * The L-POL-CTX exposure is this unit's largest: ten `assert` rules below take two free CVL `bytes` (`data`,
  * `context`) and make a call, namely R_MS_2, R_MS_3_malformed, R_MS_3_liveness, R_MS_3_ctxMalformed, R_MS_4,

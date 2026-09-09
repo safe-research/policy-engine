@@ -2,7 +2,8 @@
 // has no rule of its own), on SafePolicyGuardHarness in
 // the closed scene {AllowPolicy, DenyPolicy, OneTimeAllowPolicy, MockPolicyHarness} with
 // SafeMockHarness, GuardProbeResponderMock, SafeSlotMock and LibHarness.
-// Run by the conf/EngineConfig*.conf files that verify this spec.
+// Run by the conf/EngineConfig*.conf files other than conf/EngineConfigGate.conf, which runs the
+// summarized twin of four leaves of this file, specs/EngineConfigGate.spec (L-CFG-DECODE).
 // File-wide: L-CFG-SCENE, L-CFG-LOOP (n <= 3), L-CFG-LOOP-N1 (n <= 1 twins), L-CFG-RECUR, L-CFG-PROBE,
 // L-CFG-GATE, L-CFG-SLOTMOCK, L-CFG-FRAME, L-ENV-TIME, L-POL-CTX-M, L-W0-SENDER.
 
@@ -15,10 +16,9 @@ using GuardProbeResponderMock as responder;
 using SafeSlotMock as slotMock;
 
 methods {
-    // Commented out with the rule that used it.
-    // function responder.mode(uint256) external returns (GuardProbeResponderMock.Mode) envfree;
-    // function responder.retLen(uint256) external returns (uint256) envfree;
-    // function responder.word3Address(uint256) external returns (address) envfree;
+    function responder.mode(uint256) external returns (GuardProbeResponderMock.Mode) envfree;
+    function responder.retLen(uint256) external returns (uint256) envfree;
+    function responder.word3Address(uint256) external returns (address) envfree;
     function slotMock.slotAddress(uint256) external returns (address) envfree;
     function oneTimeAllow.isGranted(address, address, AccessSelector.T) external returns (bool) envfree;
     function configDataWord0(SafePolicyGuard.Configuration[], uint256) external returns (uint256) envfree;
@@ -210,23 +210,18 @@ function calleesAreArrayPolicies(SafePolicyGuard.Configuration[] c, address x) r
     return ok;
 }
 
-// Commented out with the rule that used it.
-/*
 // Solidity does not range-check an enum read from storage; excluding out-of-range values restricts the re-entrant mock,
 // not contracts/, where every enum reaching storage was checked when decoded.
 function validMockOperation() {
     require mockPolicy.cfgOperation() == lib.opCall()
         || mockPolicy.cfgOperation() == lib.opDelegateCall();
 }
-*/
 
 // R-CFG-2: every $policies or rootConfigured namespace that f writes lies in {sender} u C_f, and the check path writes
 // neither.
-// The applyConfiguration instance is filtered out: it has no SUCCESS verdict on certora-cli 8.19.1.
 rule R_CFG_2(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c,
              address x, AccessSelector.T k, bytes32 r)
-    filtered { f -> !f.isView && !f.isPure && isConfigPath(f)
-        && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+    filtered { f -> !f.isView && !f.isPure && isConfigPath(f) }
 {
     resetFrame();
     address pol0 = policyAt(x, k);
@@ -296,11 +291,9 @@ rule R_CFG_2_check(env e, method f, calldataarg args, SafePolicyGuard.Configurat
 // transition with no callee: requestConfiguration overwrites an expired entry in place
 // (SafePolicyGuard.sol:365) with no outgoing call. That transition is named instead of excluded, so the
 // clause admits nothing else.
-// The applyConfiguration instance is filtered out: it has no SUCCESS verdict on certora-cli 8.19.1.
 rule R_CFG_3(env e, method f, calldataarg args, bytes32 root, SafePolicyGuard.Configuration[] c,
              address s, bytes32 r)
-    filtered { f -> !f.isView && !f.isPure && isConfigPath(f)
-        && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+    filtered { f -> !f.isView && !f.isPure && isConfigPath(f) }
 {
     resetFrame();
     uint256 v0 = rootConfigured(s, r);
@@ -442,8 +435,6 @@ rule R_CFG_5(env e, bytes32 r, address s2, bytes32 r2, address sp, AccessSelecto
         "liveness: a pending or matured root is always invalidatable by its Safe";
 }
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-6(a), unrestricted form: an unrequested, immature, expired or paid applyConfiguration always reverts, under
 // no scene restriction. It runs in EngineConfig.conf and times out there, so the row's evidence is the n <= 1 twin
 // R_CFG_6a_one in EngineConfigRootPin.conf. #101 adds the expired case to the same clause.
@@ -459,10 +450,7 @@ rule R_CFG_6a(env e, SafePolicyGuard.Configuration[] c) {
             || expiredOrPanics(e.block.timestamp, v0)) => reverted,
         "an unrequested, immature or expired root never applies, and the entry point is not payable";
 }
-*/
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-6(d): every CALL applyConfiguration makes carries the configure selector and no value, and there is no
 // DELEGATECALL.
 rule R_CFG_6d(env e, SafePolicyGuard.Configuration[] c, address x) {
@@ -476,10 +464,7 @@ rule R_CFG_6d(env e, SafePolicyGuard.Configuration[] c, address x) {
     assert gValueCalls == 0, "no outgoing CALL carries value";
     assert gDelegateCalls == 0, "the configuration path makes no DELEGATECALL";
 }
-*/
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-6(d), the two encoding-sensitive halves, split off from R_CFG_6d because both read the callee address:
 // every callee is an array non-zero policy, and there is exactly one CALL per non-zero entry.
 rule R_CFG_6d_calleesAndCount(env e, SafePolicyGuard.Configuration[] c, address x) {
@@ -492,7 +477,6 @@ rule R_CFG_6d_calleesAndCount(env e, SafePolicyGuard.Configuration[] c, address 
     assert gCalled[x] => calleesAreArrayPolicies(c, x), "every callee is one of the array's non-zero policies";
     assert gCalls == nonZeroPolicyCount(c), "exactly one CALL per non-zero entry";
 }
-*/
 
 // R-CFG-7: the root is already deleted when each configure runs, as the RECORD mock reads back.
 rule R_CFG_7(env e, SafePolicyGuard.Configuration[] c) {
@@ -517,8 +501,6 @@ rule R_CFG_8_length(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configur
     assert c1.length == c2.length, "equal roots => equal length";
 }
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-9 (gate): configureImmediately reverts iff paid or a guard slot of the calling Safe holds this contract.
 // Stated here with no summary, so _readGuardSlot's returndata read is unmodelled and the leaf FAILs: this copy is the
 // reproduction of the pointer-analysis defect L-CFG-DECODE cuts. The row's proof is the same rule in
@@ -534,10 +516,7 @@ rule R_CFG_9_gate(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 
     assert (e.msg.value != 0 || installed) => lastReverted,
         "no bypass: once either guard slot of the calling Safe holds this contract, configureImmediately reverts";
 }
-*/
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-9 (gate, liveness half): an unguarded Safe can always configure itself immediately. Unsummarized with
 // R_CFG_9_gate above, and proven with it in specs/EngineConfigGate.spec under L-CFG-DECODE.
 rule R_CFG_9_gate_live(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
@@ -551,7 +530,6 @@ rule R_CFG_9_gate_live(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uin
     assert (e.msg.value == 0 && !installed) => !lastReverted,
         "liveness: an unguarded Safe can always configure itself immediately";
 }
-*/
 
 // R-CFG-9 (probe discipline): every guard-slot probe targets the caller, at most two are made, none after a configure
 // CALL. Stated at the opcode level, which is what discharges the staticcall half of L-CFG-DECODE, so this rule is kept
@@ -593,8 +571,6 @@ rule R_CFG_9_effects(env e, SafePolicyGuard.Configuration[] c, uint256 i, addres
     assert gCalled[x] => calleesAreArrayPolicies(c, x), "every callee is one of the array's non-zero policies";
 }
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-10: a slot answer of at least 96 bytes whose masked word 3 is this contract reads as installed. Unsummarized
 // here, so the raw returndata read is unmodelled in both encodings and the leaf FAILs; the row's proof is the same rule
 // in specs/EngineConfigGate.spec under L-CFG-DECODE, whose decode this rule states.
@@ -615,10 +591,7 @@ rule R_CFG_10(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) 
     assert (viaGuardSlot || viaModuleSlot) => lastReverted,
         "a successful answer of at least 96 bytes whose masked word 3 is this contract reads as enabled";
 }
-*/
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-10 (fail-closed half): reverting, short and dirty answers never read as installed. Unsummarized with R_CFG_10
 // above, and proven with it in specs/EngineConfigGate.spec under L-CFG-DECODE.
 rule R_CFG_10_notEnabled(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
@@ -638,10 +611,7 @@ rule R_CFG_10_notEnabled(env e, SafePolicyGuard.Configuration[] c, uint256 gs, u
     assert (!viaGuardSlot && !viaModuleSlot) => !lastReverted,
         "reverting or short answers, and dirty words that do not mask to this contract, never read as enabled";
 }
-*/
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-CFG-11, unrestricted form: a configuration applies only in [T + DELAY, T + DELAY + EXPIRY) after its request at
 // T. It runs in EngineConfig.conf and times out there, so the row's evidence is the n <= 1 twin R_CFG_11_one in
 // EngineConfigApply.conf. #101 adds the upper end, a second assert rather than a changed one.
@@ -660,7 +630,6 @@ rule R_CFG_11(env e1, env e2, bytes32 r, SafePolicyGuard.Configuration[] c) {
     assert !reverted => e2.block.timestamp < e1.block.timestamp + DELAY() + EXPIRY(),
         "and only while the EXPIRY window of that request is still open (#101)";
 }
-*/
 
 // R-CFG-12: the application window of #101 closes. Stated at n <= 1 in the verdict-fixed scene, with the two gates
 // R-CFG-6(a) already covers (requested, matured) and the entry-verdict clause discharged, so what is left is exactly
@@ -804,17 +773,12 @@ rule W_CFG_1_W6(env e1, env e2, SafePolicyGuard.Configuration[] c) {
     satisfy pending != 0 && rootConfigured(e2.msg.sender, root) == 0;
 }
 
-// Commented out with the rule that used it.
-/*
 // INV-CFG-1(a): a key is one AccessSelector.create could have produced, in the arithmetic form of the Lib unit's
 // canonical(). The row is blocked: conf/EngineConfigKeys.conf states the invariant under precise_bitwise_ops and
 // some of its induction nodes report FAIL.
 definition canonicalKey(AccessSelector.T k) returns bool =
     (to_mathint(k) % 2^216) < 2^160 && ((to_mathint(k) / 2^216) % 256) <= 1;
-*/
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // INV-CFG-1: a key carrying a non-zero policy is canonical.
 invariant INV_CFG_1(address s, AccessSelector.T k)
     policyAt(s, k) != 0 => canonicalKey(k)
@@ -831,9 +795,8 @@ invariant INV_CFG_1(address s, AccessSelector.T k)
             validMockOperation();
         }
     }
-*/
 
-// Reduced-scope twins at n <= 1 (L-CFG-LOOP-N1); the unrestricted forms are commented out above.
+// Reduced-scope twins at n <= 1 (L-CFG-LOOP-N1); the unrestricted R_CFG_6a and R_CFG_11 stay blocked.
 
 // R-CFG-6(a) at n <= 1: an unrequested, immature, expired or paid applyConfiguration always reverts; the expired case
 // is #101's.
@@ -868,7 +831,7 @@ rule R_CFG_11_one(env e1, env e2, bytes32 r, SafePolicyGuard.Configuration[] c) 
         "and only while the EXPIRY window of that request is still open (#101)";
 }
 
-// R-CFG-2 at n <= 1 on the applyConfiguration node, which the parametric form filters out.
+// R-CFG-2 at n <= 1 on the applyConfiguration node, which the parametric form leaves UNKNOWN.
 rule R_CFG_2_apply1(env e, SafePolicyGuard.Configuration[] c, address x, AccessSelector.T k, bytes32 r) {
     require c.length <= 1;
     resetFrame();

@@ -1,0 +1,293 @@
+// SPDX-License-Identifier: LGPL-3.0-only
+// Negative control, not part of the verified surface, used only by
+// certora/prover-defects/EngineCheckNegControl.conf. The one deleted line lives in
+// NegSafePolicyGuard.sol; this file carries no code change at all.
+// This is a copy of contracts/core/PolicyEngine.sol at 177de07 (before #101 and #103), so it does
+// not carry the GuardTargetDenied denial of #103; the control reproduces the pre-#103 engine on
+// purpose, since what it measures is the INV-EC-1 recursion budget and not the denial.
+// Everything that differs from that file: this header; the four import paths, rewritten to
+// ../../contracts/; and four comment lines whose em-dashes were repunctuated (:150, :176, :194,
+// :212). The contract is still `abstract contract PolicyEngine`, not renamed.
+pragma solidity ^0.8.30;
+
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {IPolicyEngine} from "../../contracts/interfaces/IPolicyEngine.sol";
+import {Operation} from "../../contracts/interfaces/Operation.sol";
+import {AccessSelector} from "../../contracts/libraries/AccessSelector.sol";
+
+/**
+ * @title Policy Engine
+ */
+abstract contract PolicyEngine is IPolicyEngine {
+    using AccessSelector for AccessSelector.T;
+
+    /**
+     * @notice Mapping of policies for each safe.
+     * @dev The mapping is structured as follows:
+     * - The first mapping is the safe address.
+     * - The second mapping is the access selector, which is a combination of the target address,
+     *   function selector, and operation type.
+     * - The value is the address of the policy contract.
+     */
+    // solhint-disable-next-line private-vars-leading-underscore
+    mapping(address safe => mapping(AccessSelector.T => address policy)) private $policies;
+
+    /**
+     * @notice The Safe currently being checked, or `address(0)` when no check is in progress.
+     * @dev Doubles as the reentrancy sentinel (non-zero => a top-level check is in progress) and
+     *      as the identity used to confine recursive checks to the checked Safe. A top-level check
+     *      is always entered with `msg.sender` (a deployed Safe), which is never `address(0)`.
+     *      Persistent storage rather than EIP-1153 transient storage, which is not available on
+     *      every target chain. Migrating is a tracked follow-up and changes no guarantees.
+     */
+    // solhint-disable-next-line private-vars-leading-underscore
+    address private $checkingSafe;
+
+    /**
+     * @notice The module that authorized the check in progress, or `address(0)` for an owner
+     *         transaction (and whenever no check is in progress).
+     * @dev Held in state rather than passed as a `checkTransaction` argument so that a policy
+     *      driving a recursive check cannot forge the authorization path it is checked under.
+     *      Persistent storage rather than EIP-1153 transient storage, which is not available on
+     *      every target chain. Migrating is a tracked follow-up and changes no guarantees.
+     */
+    // solhint-disable-next-line private-vars-leading-underscore
+    address private $checkingModule;
+
+    /**
+     * @notice Error indicating an invalid selector was provided.
+     */
+    error InvalidSelector();
+
+    /**
+     * @notice Error indicating a reentrant top-level check was attempted.
+     */
+    error Reentrancy();
+
+    /**
+     * @notice Error indicating `checkTransaction` was called outside of a top-level guard check.
+     */
+    error NotChecking();
+
+    /**
+     * @notice Error indicating a check was requested for a Safe other than the one being checked.
+     */
+    error CrossSafeCheck();
+
+    /**
+     * @notice Error indicating a module transaction tried to reach a configuration entry point.
+     */
+    error ModuleConfigurationDenied();
+
+    /**
+     * @notice Error indicating access was denied.
+     * @param policy The address of the policy that denied access.
+     * @dev This error is thrown when a policy denies access to a transaction.
+     *      The address of the policy that denied access is provided for debugging purposes.
+     *      The address(0) indicates that no policy was found for the given access selector.
+     */
+    error AccessDenied(address policy);
+
+    /**
+     * @notice Error indicating a policy reverted while checking a transaction.
+     * @param policy The address of the policy that reverted.
+     * @param reason The policy's own revert data, forwarded for diagnostics.
+     * @dev Distinct from {AccessDenied}, which covers no policy being configured and a policy
+     *      returning the wrong magic value.
+     */
+    error PolicyReverted(address policy, bytes reason);
+
+    /**
+     * @notice Error indicating the policy configuration failed.
+     */
+    error PolicyConfigurationFailed();
+
+    /**
+     * @notice Event emitted when a policy is confirmed.
+     * @param safe The address of the safe.
+     * @param target The target address of the policy.
+     * @param selector The function selector of the policy.
+     * @param operation The operation type of the policy.
+     * @param policy The address of the policy contract.
+     * @param data Additional data for the policy configuration.
+     */
+    event PolicyConfirmed(
+        address indexed safe,
+        address indexed target,
+        bytes4 selector,
+        Operation operation,
+        address policy,
+        bytes data
+    );
+
+    /**
+     * @inheritdoc IPolicyEngine
+     */
+    function getPolicy(
+        address safe,
+        address to,
+        bytes calldata data,
+        Operation operation
+    ) public view returns (AccessSelector.T, address) {
+        bytes4 selector = _decodeSelector(data);
+        AccessSelector.T access = AccessSelector.create(to, selector, operation);
+
+        mapping(AccessSelector.T => address) storage policies = $policies[safe];
+        address policy = policies[access];
+
+        // Use the fallback policy for the given operation if there is no specific one.
+        if (policy == address(0)) {
+            access = AccessSelector.createFallback(operation);
+            policy = policies[access];
+        }
+
+        return (access, policy);
+    }
+
+    /**
+     * @dev Overridden by inheriting contracts to permit specific calls with no configured policy.
+     *      An override widens what the guard allows, so each permitted call must be pinned exactly
+     *      by target, value, selector and operation, and must not be able to reconfigure policies
+     *      outside the delay.
+     */
+    // solhint-disable no-empty-blocks
+    function _allowedCalls(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Operation operation
+    ) internal view virtual returns (bool) {}
+    // solhint-enable no-empty-blocks
+
+    /**
+     * @inheritdoc IPolicyEngine
+     */
+    function checkTransaction(
+        address safe,
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Operation operation,
+        bytes memory context
+    ) public virtual returns (address) {
+        // Intentionally `public`: this is invoked both internally by the guard entry points
+        // (`checkTransaction(msg.sender, ...)`) and externally by a policy recursing during a
+        // check (e.g. `MultiSendPolicy` validating each sub-transaction). The checks below do NOT
+        // block external calls; they constrain *when* and *for which Safe* it may run:
+        //  - `NotChecking`: only while a top-level check is in progress. `$checkingSafe` is set by
+        //    `_enterCheck` at the guard entry and cleared on exit, so a standalone call reverts.
+        //  - `CrossSafeCheck`: only for the Safe currently being checked, so a re-entrant or
+        //    cross-policy call cannot drive a check for a different Safe.
+        // `msg.sender` is deliberately not checked: the legitimate re-entrant (external) caller is
+        // a policy whose address is not known in advance.
+        require($checkingSafe != address(0), NotChecking());
+        require(safe == $checkingSafe, CrossSafeCheck());
+
+        if (_allowedCalls(to, value, data, operation)) {
+            // No policy changes permitted via module transaction
+            require($checkingModule == address(0), ModuleConfigurationDenied());
+            return address(0);
+        }
+
+        (AccessSelector.T access, address policy) = getPolicy(safe, to, data, operation);
+        require(policy != address(0), AccessDenied(address(0)));
+        // The module comes from state, not from the caller: see `$checkingModule`.
+        try
+            IPolicy(policy).checkTransaction(safe, to, value, data, operation, $checkingModule, context, access)
+        returns (bytes4 magicValue) {
+            require(magicValue == IPolicy.checkTransaction.selector, AccessDenied(policy));
+        } catch (bytes memory reason) {
+            revert PolicyReverted(policy, reason);
+        }
+        return policy;
+    }
+
+    /**
+     * @notice Begins a top-level guard check for `safe`, guarding against reentrancy.
+     * @param safe The Safe being checked.
+     * @param module The module authorizing the transaction, or `address(0)` for an owner transaction.
+     * @dev Reverts if a top-level check is already in progress. Since the Safe invokes the guard on
+     *      every execution, this also stops a policy from re-entering the Safe to run another
+     *      guarded transaction mid-check. It does not by itself restrict calls to the configuration
+     *      functions, which stay safe because their state is keyed by `msg.sender`. Nor does it
+     *      stop a policy driving checks of the same Safe's other policies; see {checkTransaction}.
+     *      Kept as shared functions rather than a modifier to avoid duplicating the guard bytecode
+     *      at each entry.
+     */
+    function _enterCheck(address safe, address module) internal {
+        require($checkingSafe == address(0), Reentrancy());
+        $checkingSafe = safe;
+        $checkingModule = module;
+    }
+
+    /**
+     * @notice Ends the top-level guard check.
+     * @dev Must run before the entry point returns; the reset is required because the fields are
+     *      persistent storage (removable once they move to transient storage). Clearing
+     *      `$checkingModule` keeps it `address(0)` outside a check, so an owner transaction can
+     *      never observe a stale module.
+     */
+    function _exitCheck() internal {
+        $checkingSafe = address(0);
+        $checkingModule = address(0);
+    }
+
+    /**
+     * @notice Internal function to decode the function selector from the provided data.
+     * @param data The data containing the function selector.
+     * @return selector The decoded function selector.
+     * @dev This function checks if the length of the data is at least 4 bytes.
+     *      If the length is 0, it returns a zero selector. If the length is less than 4,
+     *      it reverts with an InvalidSelector error.
+     */
+    function _decodeSelector(bytes calldata data) internal pure returns (bytes4 selector) {
+        if (data.length >= 4) {
+            return bytes4(data);
+        } else if (data.length == 0) {
+            return bytes4(0);
+        } else {
+            revert InvalidSelector();
+        }
+    }
+
+    /**
+     * @notice Internal function to update a policy for a given safe and access selector.
+     * @param safe The address of the safe.
+     * @param access The access selector of the policy.
+     * @param policy The address of the policy contract.
+     */
+    function _updatePolicy(address safe, AccessSelector.T access, address policy) internal {
+        $policies[safe][access] = policy;
+    }
+
+    /**
+     * @notice Internal function to confirm a policy for a given safe and access selector.
+     * @param safe The address of the safe.
+     * @param target The target address of the policy.
+     * @param selector The function selector of the policy.
+     * @param operation The operation type of the policy.
+     * @param policy The address of the policy contract.
+     * @param data Additional data for the policy configuration.
+     */
+    function _confirmPolicy(
+        address safe,
+        address target,
+        bytes4 selector,
+        Operation operation,
+        address policy,
+        bytes memory data
+    ) internal virtual {
+        // Creating access selector for a policy
+        AccessSelector.T access = AccessSelector.create(target, selector, operation);
+
+        // Update the policy mapping
+        _updatePolicy(safe, access, policy);
+
+        // Configuring policy
+        if (policy != address(0)) {
+            require(IPolicy(policy).configure(safe, access, data), PolicyConfigurationFailed());
+        }
+
+        emit PolicyConfirmed(safe, target, selector, operation, policy, data);
+    }
+}
