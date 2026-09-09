@@ -8,11 +8,11 @@ Verified sources: `SafePolicyGuard.sol` configuration path; `AccessSelector.sol`
 
 | unit | subject | specs | confs |
 |---|---|---|---|
-| EngineConfig (CFG) | `SafePolicyGuard.sol` configuration path | `EngineConfig`, `Common` | `EngineConfig`, `EngineConfigApply`, `EngineConfigEffects`, `EngineConfigFrame`, `EngineConfigFrameApply`, `EngineConfigFrameCheck`, `EngineConfigLight`, `EngineConfigRoot`, `EngineConfigRootPin` |
+| EngineConfig (CFG) | `SafePolicyGuard.sol` configuration path | `EngineConfig`, `GuardSlotDecode`, `Common` | `EngineConfig`, `EngineConfigApply`, `EngineConfigEffects`, `EngineConfigFrame`, `EngineConfigFrameApply`, `EngineConfigFrameCheck`, `EngineConfigLight`, `EngineConfigRoot`, `EngineConfigRootPin`, `GuardSlotDecode` |
 | Lib (LIB) | `AccessSelector.sol`, `SignatureExtension.sol` | `Lib` | `Lib`, `LibBitwise` |
 | shared | Safe v1.5.0, mocked | `SafeMock` | `SafeMock` |
 
-Harnesses: `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`: 5 files, 6 contracts. Repo tests: `test/*.spec.ts`, run by `npm test`.
+Harnesses: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`: 6 files, 7 contracts. Repo tests: `test/*.spec.ts`, run by `npm test`.
 
 ## 2. Results summary
 
@@ -21,7 +21,7 @@ Harnesses: `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeRespond
 | Green properties | 18 of 18: 15 unqualified, 3 qualified in the status cell |
 | Blocked on prover limits | none |
 | Waived with measured evidence | 0 |
-| Confs and their jobs | 12 confs, each row citing a graded job: 12 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
+| Confs and their jobs | 13 confs, each row citing a graded job: 13 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
 | Repo tests | 180 passing, the `npm test` summary line (section 8) |
 
 ## 3. Property table
@@ -87,7 +87,7 @@ One id of the series is retired, proven rather than waived, and is not counted a
 | `L-BIND-3` | applies at `harnesses/SafeMockHarness.sol`; defined here | The mock's hash equals a real Safe's EIP-712 transaction hash for the same fields at the mock's address and chain. | argument: the mock's `getTransactionHash` and `domainSeparator` are Safe v1.5.0's code copied verbatim, as L-W0-1 states |
 | `L-CFG-LOOP-N1` | `specs/EngineConfig.spec`, `conf/EngineConfig.conf`, `conf/EngineConfigRootPin.conf`, `conf/EngineConfigApply.conf` and `conf/EngineConfigFrameApply.conf` | These rules bound the configuration array to at most one entry instead of the unit's usual three: `W_CFG_1_W2`, `W_CFG_1_W3`, `R_CFG_6a_one`, `R_CFG_11_one`, `R_CFG_6b_one`, `R_CFG_6c_one`, `R_CFG_8_fields_one`, `R_CFG_12`, `R_CFG_2_apply1` and `R_CFG_3_apply1`. | argument |
 | `L-IT-4` | `specs/SafeMock.spec` | The owner list is bounded to 4 entries and hashing to `hashing_length_bound 3200`, the L-W0-HASH instance, because `_requiredSignatures` reads `ISafe(safe).getOwners().length` (`P/IncreasedThresholdPolicy:147`). |  |
-| `L-W0-HASH` | `conf/LibBitwise.conf`, `conf/SafeMock.conf` | Executions hashing a `bytes` value longer than the conf's own bound are dropped, an assumed bound. | argument: the flag drops executions that hash past the bound, so a violation beyond it is missed, and no rule of the suite hashes an unbounded `bytes` |
+| `L-W0-HASH` | 47 of the 49 confs set `optimistic_hashing true`; 38 bound at 3200 bytes, 5 at 448, 2 at 1216 and 2 at 416. `conf/Lib.conf` and `conf/GuardSlotDecode.conf` set neither key: nothing in their rules hashes a symbolic `bytes` | Executions hashing a `bytes` value longer than the conf's own bound are dropped, an assumed bound. | argument: the flag drops executions that hash past the bound, so a violation beyond it is missed, and no rule of the suite hashes an unbounded `bytes` |
 | `L-W0-SENTINEL` | `specs/Common.spec` | No rule of this tree assumes `$checkingSafe == 0 && $checkingModule == 0` in the pre-state of a hook call through `requireInvariant`; that state is the sentinel invariant's own claim. |  |
 | `L-W0-SENDER` | `specs/EngineConfig.spec` (the `msg.sender != 0` requires) | `msg.sender` is never `address(0)` on chain: no key has that address and a contract cannot be deployed there. | argument |
 | `L-ENV-TIME` | applies at `specs/EngineConfig.spec`; defined here | Block timestamps are non-decreasing across transactions | argument |
@@ -107,7 +107,7 @@ One id of the series is retired, proven rather than waived, and is not counted a
 | `L-CFG-GATE` | `specs/EngineConfig.spec` | The `GuardAlreadyEnabled` iff is stated with an empty configuration array | argument |
 | `L-CFG-FRAME` | `specs/EngineConfig.spec` | The opcode-hook observer ghosts start at zero | argument |
 | `L-CFG-SLOTMOCK` | `harnesses/Mocks.sol` (`SafeSlotMock`), `specs/EngineConfig.spec` | The Safe answering the guard's slot probe in the `GuardAlreadyEnabled` family is `SafeSlotMock`, a Safe's observable answer with slot words in a mapping, and `SafeMockHarness` is out of that DISPATCH list. | `test/safePolicyGuardConfiguration.spec.ts` |
-| `L-CFG-DECODE` | `specs/EngineConfig.spec` | One guard-slot probe of slot `s` at target `t` returns exactly `(success && returndata.length >= 96) ? word3(returndata) & 0xff..ff : address(0)`, summarizing `_readGuardSlot` so that the four gate leaves rest on that function rather than on the prover's pointer analysis, which on that function's raw `mload` of the `staticcall` return buffer falls back to an unconstrained byte load and reports the four gate leaves FAIL on probe answers no Safe can give; the pin that discharges it holds a copy of the guard's decode assembly rather than the private function itself, with an ABI-decoded `bytes memory` parameter standing in for the `staticcall` return buffer. The decode is proved for a return buffer of at most 160 bytes, the bound each of the pin's three rules requires and the bound the gate rules require of the responder (L-W0-3, L-CFG-PROBE); a longer answer is out of model, and the guard reads word 3 whatever the total length. Keeping the copy in step with `G:309-320` is a review obligation and not a proved one. | decode half proved by the decode pin against the copy of the guard's assembly, the mask witnessed there; `staticcall` half by the opcode-level probe-discipline rule and L-W0-3, with a rule re-proving the target and the two slots through the summary |
+| `L-CFG-DECODE` | `harnesses/GuardSlotDecodePin.sol` | One guard-slot probe of slot `s` at target `t` returns exactly `(success && returndata.length >= 96) ? word3(returndata) & 0xff..ff : address(0)`, summarizing `_readGuardSlot` so that the four gate leaves rest on that function rather than on the prover's pointer analysis, which on that function's raw `mload` of the `staticcall` return buffer falls back to an unconstrained byte load and reports the four gate leaves FAIL on probe answers no Safe can give; the pin that discharges it holds a copy of the guard's decode assembly rather than the private function itself, with an ABI-decoded `bytes memory` parameter standing in for the `staticcall` return buffer. The decode is proved for a return buffer of at most 160 bytes, the bound each of the pin's three rules requires and the bound the gate rules require of the responder (L-W0-3, L-CFG-PROBE); a longer answer is out of model, and the guard reads word 3 whatever the total length. Keeping the copy in step with `G:309-320` is a review obligation and not a proved one. | decode half proved by the decode pin against the copy of the guard's assembly, the mask witnessed there; `staticcall` half by the opcode-level probe-discipline rule and L-W0-3, with a rule re-proving the target and the two slots through the summary |
 | `L-EC-6` | `harnesses/MockPolicyHarness.sol` | Re-entry through `MockPolicyHarness` is modelled to one nested dispatched frame, with an asserted bound. |  |
 | `L-EC-8` | `harnesses/SafePolicyGuardHarness.sol` | `tryCheck` is an external self-call (`msg.sender == guard`), used only to classify the engine-level revert as `AccessDenied`, `PolicyReverted` or raw. |  |
 | `L-IT-2` | `specs/SafeMock.spec`, `conf/SafeMock.conf` | The Safe in scene is set up: `1 <= threshold <= ownerCount`, an invariant against the mock, whose only writer `SafeMockHarness.setOwnersAndThreshold` requires it, and a precondition of the rules that put Safe v1.5.0 in scene, whose own writers are `authorized` and therefore unreachable from a policy rule | job [335e2ef1](https://prover.certora.com/output/950385/335e2ef18dc6432faed47cebc7fcb542?anonymousKey=c2e1256ff0e44b4ecc333201615dc59d02e4e8c4) |
@@ -162,6 +162,6 @@ The repo-test count is the runner's own summary line, `npm test` ending in `180 
 
 One conf of this tree is merged from scoped confs: `EngineConfigApply.conf` absorbed the `ApplyEffects`, `Delay` and `RootFields` confs and is green at job [1f1b7f90](https://prover.certora.com/output/950385/1f1b7f90049a4fff95ffbd613c1cee44?anonymousKey=a8dd7156e2490725567a23113d31dcb96b84f538), 5 rules and 95 leaves, every leaf SUCCESS, which is the job its rows cite.
 
-Every one of the 12 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
+Every one of the 13 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
 
 The other jobs this report cites ran confs that are not part of this tree, and each citation says so; each such job stays readable through its link.
