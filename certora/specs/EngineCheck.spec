@@ -448,6 +448,16 @@ rule R_EC_14_noDelegateCall(env e, method f, calldataarg args, SafePolicyGuard.C
     assert gDelegateCalls == 0, "the guard never DELEGATECALLs";
 }
 
+// R-EC-14 at the applyConfiguration node with n <= 1 (L-EC-LOOP-N1): the n <= 3 node of R_EC_14_noDelegateCall, once
+// a TIMEOUT on keccak over a symbolic array, is SUCCESS in EngineCheckDelegate.conf; the EngineConfig.spec rule that
+// states the claim at n <= 3 is commented out.
+rule R_EC_14_noDelegateCall_apply1(env e, SafePolicyGuard.Configuration[] c) {
+    resetFrame();
+    require c.length <= 1;
+    applyConfiguration(e, c);
+    assert gDelegateCalls == 0, "the guard never DELEGATECALLs (applyConfiguration at n <= 1)";
+}
+
 // R-EC-14: during a check every outgoing CALL the guard makes is IPolicy.checkTransaction with no value to the policy
 // resolved for that invocation.
 rule R_EC_14(env e, address to, uint256 value, bytes data,
