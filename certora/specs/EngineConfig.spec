@@ -252,11 +252,44 @@ rule R_CFG_6a(env e, SafePolicyGuard.Configuration[] c) {
         "an unrequested, immature or expired root never applies, and the entry point is not payable";
 }
 */
+
+// R-CFG-7: the root is already deleted when each configure runs, as the RECORD mock reads back.
+rule R_CFG_7(env e, SafePolicyGuard.Configuration[] c) {
+    require c.length <= 3;
+    require mockPolicy.configureMode() == MockPolicyHarness.ConfigureMode.RECORD;
+    require mockPolicy.primedRoot() == configurationRoot(c);
+    require c.length == 1 && configPolicy(c, 0) == mockPolicy;
+    require mockPolicy.configureCalls() == 0;
+    uint256 confBefore = mockPolicy.configureCalls();
+
+    applyConfiguration(e, c);
+
+    assert mockPolicy.configureCalls() > confBefore, "the mock's configure actually ran";
+    assert mockPolicy.observedRootValue() == 0,
+        "the root is already deleted when configure runs (delete-before-configure)";
+}
+
 // R-CFG-8: two configuration arrays with the same root have the same length.
 rule R_CFG_8_length(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configuration[] c2) {
     require c1.length <= 3 && c2.length <= 3;
     require configurationRoot(c1) == configurationRoot(c2);
     assert c1.length == c2.length, "equal roots => equal length";
+}
+
+
+// R-CFG-9 (probe discipline): every guard-slot probe targets the caller, at most two are made, none after a configure
+// CALL. Stated at the opcode level, which is what discharges the staticcall half of L-CFG-DECODE, so this rule is kept
+// out of any file summarizing _readGuardSlot: the summary removes the STATICCALLs these three asserts count.
+rule R_CFG_9_probe(env e, SafePolicyGuard.Configuration[] c, address x) {
+    require c.length <= 3;
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+    resetFrame();
+
+    configureImmediately(e, c);
+
+    assert gStaticCalled[x] => x == e.msg.sender, "every guard-slot probe targets the caller";
+    assert gStatics <= 2, "at most two guard-slot probes";
+    assert gStaticsAfterCall == 0, "every probe happens before the first configure CALL";
 }
 
 // R-CFG-9 (effects): configureImmediately has the R-CFG-6(c) policy effects and R-CFG-6(d) call frame and leaves
@@ -381,6 +414,61 @@ rule W_CFG_1_W3(env e1, env e2, SafePolicyGuard.Configuration[] c) {
     requestConfiguration(e1, configurationRoot(c));
     applyConfiguration(e2, c);
     satisfy rootConfigured(e2.msg.sender, configurationRoot(c)) == 0;
+}
+
+// W-CFG-1 witnesses (W_CFG_1_W4a to W_CFG_1_W4d): the four guard-slot states of the calling Safe, one rule per state.
+function w4Setup(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    require e.msg.value == 0;
+    require to_bytes32(gs) == GUARD_STORAGE_SLOT() && to_bytes32(ms) == MODULE_GUARD_STORAGE_SLOT();
+}
+
+// W-CFG-1 witness (W_CFG_1_W4a): neither slot holds this contract, and configureImmediately succeeds.
+rule W_CFG_1_W4a(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    w4Setup(e, c, gs, ms);
+    address g = slotMock.slotAddress(gs);
+    address mg = slotMock.slotAddress(ms);
+    configureImmediately@withrevert(e, c);
+    bool reverted = lastReverted;
+    satisfy g != currentContract && mg != currentContract && !reverted;
+}
+
+// W-CFG-1 witness (W_CFG_1_W4b): the guard slot holds this contract beside a different module guard, and it reverts.
+rule W_CFG_1_W4b(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    w4Setup(e, c, gs, ms);
+    address g = slotMock.slotAddress(gs);
+    address mg = slotMock.slotAddress(ms);
+    configureImmediately@withrevert(e, c);
+    bool reverted = lastReverted;
+    satisfy g == currentContract && mg != currentContract && mg != 0 && reverted;
+}
+
+// W-CFG-1 witness (W_CFG_1_W4c): the module-guard slot holds this contract beside a different guard, and it reverts.
+rule W_CFG_1_W4c(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    w4Setup(e, c, gs, ms);
+    address g = slotMock.slotAddress(gs);
+    address mg = slotMock.slotAddress(ms);
+    configureImmediately@withrevert(e, c);
+    bool reverted = lastReverted;
+    satisfy g != currentContract && g != 0 && mg == currentContract && reverted;
+}
+
+// W-CFG-1 witness (W_CFG_1_W4d): both slots hold this contract, and it reverts.
+rule W_CFG_1_W4d(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    w4Setup(e, c, gs, ms);
+    address g = slotMock.slotAddress(gs);
+    address mg = slotMock.slotAddress(ms);
+    configureImmediately@withrevert(e, c);
+    bool reverted = lastReverted;
+    satisfy g == currentContract && mg == currentContract && reverted;
+}
+
+// W-CFG-1 witness (W_CFG_1_W5): a clearing entry succeeds with no configure call and leaves the key at address(0).
+rule W_CFG_1_W5(env e, SafePolicyGuard.Configuration[] c) {
+    require e.msg.sender == slotMock;
+    require c.length == 1 && configPolicy(c, 0) == 0;
+    resetFrame();
+    configureImmediately(e, c);
+    satisfy gCalls == 0 && policyAt(e.msg.sender, configKey(c, 0)) == 0;
 }
 
 // W-CFG-1 witness (W_CFG_1_W6): the empty array has a requestable root that applyConfiguration consumes.
