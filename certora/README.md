@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-87 of 87 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+88 of 88 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -14,21 +14,21 @@ From the repository root:
 pip install -r certora/requirements.txt      # certora-cli==8.19.1
 ```
 
-Also required: a `solc` 0.8.30 binary named `solc-0.8.30` on `PATH`, which every conf pins together with `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000` (the one real-Safe conf maps three of the four per file and keeps one `solc` for the whole conf, see "Real Safe in scene" below), and `CERTORAKEY` in the environment.
+Also required: a `solc` 0.8.30 binary named `solc-0.8.30` on `PATH`, which every conf pins together with `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000` (the 2 real-Safe confs map three of the four per file and keep one `solc` for the whole conf, see "Real Safe in scene" below), and `CERTORAKEY` in the environment.
 
 ```sh
 certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting for the cloud verdict
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 40 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 41 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 21 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 40 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/specs/` | 22 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
+| `certora/conf/` | 41 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
 | `certora/harnesses/` | 9 files, 12 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `MultiSendPolicyHarness`, `EngineRecorderHarness`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `RealSafeHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
@@ -44,9 +44,9 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Evidence | The job id in the report's property table is the authority for a row, and a conf's `rule` filter defines the rule set that job graded, so a rule outside the filter was not run by it. Where half a spec needs a different flag or budget, that spec is split across a conf pair and the unit table below names both confs; every other filter is a budget split within one unit. |
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 24 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
-| Real Safe in scene | The Safe a rule talks about is Safe v1.5.0 itself, inherited unchanged by `RealSafeHarness` (`L-SAFE-1`), in the one policy conf (`CoSigner.conf`), whose rows bind the verdict to Safe's own nonce, transaction hash, owner list and threshold. Safe's own source does not compile via IR, so those confs carry `solc_via_ir_map`, `solc_evm_version_map` and `solc_optimize_map` in place of the three scalar flags: the verified policy keeps the suite's settings and `RealSafeHarness` compiles for `paris` with the optimizer off, the settings `hardhat.config.ts:68-77` builds Safe's own source with. The fourth setting, the compiler binary, is one scalar per conf, so that code is verified under `solc-0.8.30` rather than the 0.8.28 the repo pins for it (`L-SAFE-1`). |
+| Real Safe in scene | The Safe a rule talks about is Safe v1.5.0 itself, inherited unchanged by `RealSafeHarness` (`L-SAFE-1`), in the 2 policy confs (`CoSigner.conf` and `CoSignerArgs.conf`), whose rows bind the verdict to Safe's own nonce, transaction hash, owner list and threshold. Safe's own source does not compile via IR, so those confs carry `solc_via_ir_map`, `solc_evm_version_map` and `solc_optimize_map` in place of the three scalar flags: the verified policy keeps the suite's settings and `RealSafeHarness` compiles for `paris` with the optimizer off, the settings `hardhat.config.ts:68-77` builds Safe's own source with. The fourth setting, the compiler binary, is one scalar per conf, so that code is verified under `solc-0.8.30` rather than the 0.8.28 the repo pins for it (`L-SAFE-1`). |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 40 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 41 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -275,6 +275,7 @@ The same cases are the evidence for `WAIVED-H-7`.
 | conf | spec | rules | status |
 |---|---|---|---|
 | `CoSigner.conf` | `CoSigner.spec` | 16 | `R-COS-1`, `R-COS-3` to `R-COS-5` and `W-COS-1` green; the cosigner, signature and verdict asserts of `R_COS_2` green, its hash assert and the whole of `R_COS_2_hashBinding` blind under `L-BIND-9` |
+| `CoSignerArgs.conf` | `CoSignerArgs.spec` | 3 | `R-COS-2` and the hash dimension of `R-COS-3` green |
 
 Tests: `test/coSignerPolicy.spec.ts`, 8 cases, none of them on the module path (D-006).
 
@@ -292,7 +293,7 @@ Tests: `test/coSignerPolicy.spec.ts`, 8 cases, none of them on the module path (
 | `L-COS-7` | Executions hashing a `bytes` value longer than 3200 bytes are dropped, an instance of the class entry L-W0-HASH | job [362bf78d](https://prover.certora.com/output/950385/362bf78da23e419e9a01b72810e78dae?anonymousKey=69563cdef5b5d42556b3725f473cf73bdd9a3583) |
 | `L-COS-11` | In this scene the `assert` model does reach the pair with exactly one empty free CVL `bytes`, measured rather than argued, so `R_COS_1_emptyContext` adds no coverage over `R_COS_1` and is kept as a regression marker | job [362bf78d](https://prover.certora.com/output/950385/362bf78da23e419e9a01b72810e78dae?anonymousKey=69563cdef5b5d42556b3725f473cf73bdd9a3583) |
 | `L-COS-12` | The write-provenance quantifier ranges over the subject's non-`view` methods only | argument |
-| `L-COS-13` | `ISafe.getTransactionHash` is summarized capture-only: it records the ten arguments and returns a fresh unconstrained `bytes32` per call (`gthRetOf[gthCount]`), so the rules that read its result assert its arguments, not two hashes |  |
+| `L-COS-13` | `ISafe.getTransactionHash` is summarized capture-only: it records the ten arguments and returns a fresh unconstrained `bytes32` per call (`gthRetOf[gthCount]`), so the rules that read its result assert its arguments, not two hashes | job [04470d6e](https://prover.certora.com/output/950385/04470d6eb7284145b03fee9c74fcd44e?anonymousKey=a910e978a55e78554ee6dc7ed338e36a1dfc4a34) |
 | `L-HASHBLIND` | No rule may rest on comparing two Safe-style offset-30 hash outputs (`keccak256(add(ptr, 30), 66)`, `Safe.sol:461-470`), and such a value used as a ghost key does not prove the value keys this transaction | job [504a62a6](https://prover.certora.com/output/950385/504a62a65afc43c8abca0819de2a872f?anonymousKey=e9471d19fd6efdca4765976a62efcda9d10fa20b), whose conf is not part of this tree, so the job cannot be re-run from it |
 | `L-SAFE-1` | The Safe's owner linked list is well-formed: sentinel-terminated, no cycle, length equals `ownerCount`. Assumed, not proven: `OwnerManager` builds the list in `setupOwners`, `addOwnerWithThreshold` and `removeOwner`, all `authorized`, so no rule of these units can reach a writer, and `getOwners()` (`SAFE/base/OwnerManager.sol`) walks the list into a `new address[](ownerCount)` array, which an ill-formed list overruns or walks past `loop_iter`. `RealSafeHarness` inherits that code unchanged and the confs compile it for `paris` with the optimizer off, the settings the package ships under, but under the suite's `solc-0.8.30`: the compiler version is one scalar for the whole conf, so the verified bytecode is Safe v1.5.0's source built one minor version above the 0.8.28 `hardhat.config.ts` pins for `Safe.sol` | argument: the shape is what setupOwners establishes and what only an authorized self-call can change |
 | `W-COS-1` | a valid cosignature returns magic and marks the hash spent | witness row |
