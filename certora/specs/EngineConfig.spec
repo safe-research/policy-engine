@@ -210,6 +210,15 @@ function calleesAreArrayPolicies(SafePolicyGuard.Configuration[] c, address x) r
     return ok;
 }
 
+// Commented out with the rule that used it.
+/*
+// Solidity does not range-check an enum read from storage; excluding out-of-range values restricts the re-entrant mock,
+// not contracts/, where every enum reaching storage was checked when decoded.
+function validMockOperation() {
+    require mockPolicy.cfgOperation() == lib.opCall()
+        || mockPolicy.cfgOperation() == lib.opDelegateCall();
+}
+*/
 
 // R-CFG-2: every $policies or rootConfigured namespace that f writes lies in {sender} u C_f, and the check path writes
 // neither.
@@ -218,6 +227,40 @@ rule R_CFG_2(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] 
              address x, AccessSelector.T k, bytes32 r)
     filtered { f -> !f.isView && !f.isPure && isConfigPath(f)
         && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+{
+    resetFrame();
+    address pol0 = policyAt(x, k);
+    uint256 root0 = rootConfigured(x, r);
+
+    if (isApplySel(f)) {
+        require c.length <= 3;
+        applyConfiguration(e, c);
+    } else if (isImmediateSel(f)) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+
+    bool wrotePolicy = policyAt(x, k) != pol0;
+    bool wroteRoot = rootConfigured(x, r) != root0;
+
+    assert wrotePolicy => (x == e.msg.sender || gCalled[x]),
+        "a $policies namespace that changed is the sender's or a callee's";
+    assert wroteRoot => (x == e.msg.sender || gCalled[x]),
+        "a rootConfigured namespace that changed is the sender's or a callee's";
+    assert (wrotePolicy && x == e.msg.sender) => (isImmediateSel(f) || isApplySel(f) || gCalled[x]),
+        "$policies[S][.] changes only via configureImmediately/applyConfiguration or a re-entrant callee";
+    assert isCheckPath(f) => ((wrotePolicy || wroteRoot) => gCalled[x]),
+        "on the check path the guard's own code writes neither mapping in any namespace";
+    assert (isRequestSel(f) || isInvalidateSel(f)) => !gCalled[x],
+        "requestConfiguration/invalidateRoot make no outgoing call (C_f is empty)";
+}
+
+// R-CFG-2 under the complementary filter; the two cover every non-view, non-pure method.
+rule R_CFG_2_check(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c,
+             address x, AccessSelector.T k, bytes32 r)
+    filtered { f -> !f.isView && !f.isPure && !isConfigPath(f) }
 {
     resetFrame();
     address pol0 = policyAt(x, k);
@@ -258,6 +301,56 @@ rule R_CFG_3(env e, method f, calldataarg args, bytes32 root, SafePolicyGuard.Co
              address s, bytes32 r)
     filtered { f -> !f.isView && !f.isPure && isConfigPath(f)
         && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+{
+    resetFrame();
+    uint256 v0 = rootConfigured(s, r);
+
+    bool isRequest = false;
+    bool isInvalidate = false;
+    bool isApply = false;
+    if (isRequestSel(f)) {
+        isRequest = true;
+        requestConfiguration(e, root);
+    } else if (isInvalidateSel(f)) {
+        isInvalidate = true;
+        invalidateRoot(e, root);
+    } else if (isApplySel(f)) {
+        isApply = true;
+        require c.length <= 3;
+        applyConfiguration(e, c);
+    } else if (isImmediateSel(f)) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+
+    uint256 v1 = rootConfigured(s, r);
+
+    assert (v0 == 0 && v1 != 0) =>
+        (to_mathint(v1) == e.block.timestamp + DELAY()
+         && ((s == e.msg.sender && isRequest && root == r) || gCalled[s])),
+        "(i) UNSET -> PENDING is T + DELAY, by the sender's requestConfiguration(r) or by a callee";
+    assert (v0 != 0 && v1 == 0) =>
+        ((s == e.msg.sender
+          && ((isInvalidate && root == r)
+              || (isApply && configurationRoot(c) == r && e.block.timestamp >= v0
+                  && !expired(e.block.timestamp, v0))))
+         || gCalled[s]),
+        "(ii) PENDING -> UNSET only by invalidateRoot(r) or an in-window applyConfiguration of that root, or by a callee";
+    assert (v0 != 0 && v1 != 0 && !gCalled[s]) =>
+        (v1 == v0
+         || (s == e.msg.sender && isRequest && root == r && expired(e.block.timestamp, v0)
+             && to_mathint(v1) == e.block.timestamp + DELAY())),
+        "(iii) with no callee a namespace moves only by the sender re-requesting its own expired root, to T + DELAY";
+    assert (v0 != 0 && v1 != 0 && gCalled[s] && v1 != v0) => to_mathint(v1) == e.block.timestamp + DELAY(),
+        "(iii) a called namespace can only refresh its own root to T + DELAY";
+}
+
+// R-CFG-3 under the complementary filter; the same two clauses moved for #101 as in R_CFG_3.
+rule R_CFG_3_check(env e, method f, calldataarg args, bytes32 root, SafePolicyGuard.Configuration[] c,
+             address s, bytes32 r)
+    filtered { f -> !f.isView && !f.isPure && !isConfigPath(f) }
 {
     resetFrame();
     uint256 v0 = rootConfigured(s, r);
@@ -368,6 +461,39 @@ rule R_CFG_6a(env e, SafePolicyGuard.Configuration[] c) {
 }
 */
 
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-CFG-6(d): every CALL applyConfiguration makes carries the configure selector and no value, and there is no
+// DELEGATECALL.
+rule R_CFG_6d(env e, SafePolicyGuard.Configuration[] c, address x) {
+    require c.length <= 3;
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+    resetFrame();
+
+    applyConfiguration(e, c);
+
+    assert gOtherSelectorCalls == 0, "every outgoing CALL carries the IPolicy.configure selector";
+    assert gValueCalls == 0, "no outgoing CALL carries value";
+    assert gDelegateCalls == 0, "the configuration path makes no DELEGATECALL";
+}
+*/
+
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-CFG-6(d), the two encoding-sensitive halves, split off from R_CFG_6d because both read the callee address:
+// every callee is an array non-zero policy, and there is exactly one CALL per non-zero entry.
+rule R_CFG_6d_calleesAndCount(env e, SafePolicyGuard.Configuration[] c, address x) {
+    require c.length <= 3;
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+    resetFrame();
+
+    applyConfiguration(e, c);
+
+    assert gCalled[x] => calleesAreArrayPolicies(c, x), "every callee is one of the array's non-zero policies";
+    assert gCalls == nonZeroPolicyCount(c), "exactly one CALL per non-zero entry";
+}
+*/
+
 // R-CFG-7: the root is already deleted when each configure runs, as the RECORD mock reads back.
 rule R_CFG_7(env e, SafePolicyGuard.Configuration[] c) {
     require c.length <= 3;
@@ -391,6 +517,41 @@ rule R_CFG_8_length(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configur
     assert c1.length == c2.length, "equal roots => equal length";
 }
 
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-CFG-9 (gate): configureImmediately reverts iff paid or a guard slot of the calling Safe holds this contract.
+// Stated here with no summary, so _readGuardSlot's returndata read is unmodelled and the leaf FAILs: this copy is the
+// reproduction of the pointer-analysis defect L-CFG-DECODE cuts. The row's proof is the same rule in
+// specs/EngineConfigGate.spec, which assumes L-CFG-DECODE; nothing in this file does.
+rule R_CFG_9_gate(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    require e.msg.sender == slotMock;
+    require c.length == 0;
+    require to_bytes32(gs) == GUARD_STORAGE_SLOT() && to_bytes32(ms) == MODULE_GUARD_STORAGE_SLOT();
+    bool installed = slotMock.slotAddress(gs) == currentContract || slotMock.slotAddress(ms) == currentContract;
+
+    configureImmediately@withrevert(e, c);
+
+    assert (e.msg.value != 0 || installed) => lastReverted,
+        "no bypass: once either guard slot of the calling Safe holds this contract, configureImmediately reverts";
+}
+*/
+
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-CFG-9 (gate, liveness half): an unguarded Safe can always configure itself immediately. Unsummarized with
+// R_CFG_9_gate above, and proven with it in specs/EngineConfigGate.spec under L-CFG-DECODE.
+rule R_CFG_9_gate_live(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    require e.msg.sender == slotMock;
+    require c.length == 0;
+    require to_bytes32(gs) == GUARD_STORAGE_SLOT() && to_bytes32(ms) == MODULE_GUARD_STORAGE_SLOT();
+    bool installed = slotMock.slotAddress(gs) == currentContract || slotMock.slotAddress(ms) == currentContract;
+
+    configureImmediately@withrevert(e, c);
+
+    assert (e.msg.value == 0 && !installed) => !lastReverted,
+        "liveness: an unguarded Safe can always configure itself immediately";
+}
+*/
 
 // R-CFG-9 (probe discipline): every guard-slot probe targets the caller, at most two are made, none after a configure
 // CALL. Stated at the opcode level, which is what discharges the staticcall half of L-CFG-DECODE, so this rule is kept
@@ -432,6 +593,52 @@ rule R_CFG_9_effects(env e, SafePolicyGuard.Configuration[] c, uint256 i, addres
     assert gCalled[x] => calleesAreArrayPolicies(c, x), "every callee is one of the array's non-zero policies";
 }
 
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-CFG-10: a slot answer of at least 96 bytes whose masked word 3 is this contract reads as installed. Unsummarized
+// here, so the raw returndata read is unmodelled in both encodings and the leaf FAILs; the row's proof is the same rule
+// in specs/EngineConfigGate.spec under L-CFG-DECODE, whose decode this rule states.
+rule R_CFG_10(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    require e.msg.sender == responder;
+    require c.length == 0;
+    require e.msg.value == 0;
+    require to_bytes32(gs) == GUARD_STORAGE_SLOT() && to_bytes32(ms) == MODULE_GUARD_STORAGE_SLOT();
+    require responder.retLen(gs) <= 160 && responder.retLen(ms) <= 160;
+
+    bool viaGuardSlot = responder.mode(gs) == GuardProbeResponderMock.Mode.RETURNS
+        && responder.retLen(gs) >= 96 && responder.word3Address(gs) == currentContract;
+    bool viaModuleSlot = responder.mode(ms) == GuardProbeResponderMock.Mode.RETURNS
+        && responder.retLen(ms) >= 96 && responder.word3Address(ms) == currentContract;
+
+    configureImmediately@withrevert(e, c);
+
+    assert (viaGuardSlot || viaModuleSlot) => lastReverted,
+        "a successful answer of at least 96 bytes whose masked word 3 is this contract reads as enabled";
+}
+*/
+
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-CFG-10 (fail-closed half): reverting, short and dirty answers never read as installed. Unsummarized with R_CFG_10
+// above, and proven with it in specs/EngineConfigGate.spec under L-CFG-DECODE.
+rule R_CFG_10_notEnabled(env e, SafePolicyGuard.Configuration[] c, uint256 gs, uint256 ms) {
+    require e.msg.sender == responder;
+    require c.length == 0;
+    require e.msg.value == 0;
+    require to_bytes32(gs) == GUARD_STORAGE_SLOT() && to_bytes32(ms) == MODULE_GUARD_STORAGE_SLOT();
+    require responder.retLen(gs) <= 160 && responder.retLen(ms) <= 160;
+
+    bool viaGuardSlot = responder.mode(gs) == GuardProbeResponderMock.Mode.RETURNS
+        && responder.retLen(gs) >= 96 && responder.word3Address(gs) == currentContract;
+    bool viaModuleSlot = responder.mode(ms) == GuardProbeResponderMock.Mode.RETURNS
+        && responder.retLen(ms) >= 96 && responder.word3Address(ms) == currentContract;
+
+    configureImmediately@withrevert(e, c);
+
+    assert (!viaGuardSlot && !viaModuleSlot) => !lastReverted,
+        "reverting or short answers, and dirty words that do not mask to this contract, never read as enabled";
+}
+*/
 
 // Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
 /*
@@ -597,6 +804,34 @@ rule W_CFG_1_W6(env e1, env e2, SafePolicyGuard.Configuration[] c) {
     satisfy pending != 0 && rootConfigured(e2.msg.sender, root) == 0;
 }
 
+// Commented out with the rule that used it.
+/*
+// INV-CFG-1(a): a key is one AccessSelector.create could have produced, in the arithmetic form of the Lib unit's
+// canonical(). The row is blocked: conf/EngineConfigKeys.conf states the invariant under precise_bitwise_ops and
+// some of its induction nodes report FAIL.
+definition canonicalKey(AccessSelector.T k) returns bool =
+    (to_mathint(k) % 2^216) < 2^160 && ((to_mathint(k) / 2^216) % 256) <= 1;
+*/
+
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// INV-CFG-1: a key carrying a non-zero policy is canonical.
+invariant INV_CFG_1(address s, AccessSelector.T k)
+    policyAt(s, k) != 0 => canonicalKey(k)
+    {
+        preserved with (env e) {
+            validMockOperation();
+        }
+        preserved configureImmediately(SafePolicyGuard.Configuration[] c) with (env e) {
+            require c.length <= 3;
+            validMockOperation();
+        }
+        preserved applyConfiguration(SafePolicyGuard.Configuration[] c) with (env e) {
+            require c.length <= 3;
+            validMockOperation();
+        }
+    }
+*/
 
 // Reduced-scope twins at n <= 1 (L-CFG-LOOP-N1); the unrestricted forms are commented out above.
 

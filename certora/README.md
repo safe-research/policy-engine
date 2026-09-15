@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-17 of 17 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+18 of 18 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -21,14 +21,14 @@ certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 8 of the 11 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 9 of the 12 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
 | `certora/specs/` | 5 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. |
-| `certora/conf/` | 11 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/conf/` | 12 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
 | `certora/harnesses/` | 5 files, 6 contracts: `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
@@ -43,9 +43,9 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Id namespaces | `L-<UNIT>-<n>` and named forms such as `L-W0-HASH` for an assumption, `WAIVED-<UNIT>-<n>` for a waived claim, `B-<n>` for a documentation finding and `D-0<nn>` for a modelling decision; a `require`, summary, ghost or flag resting on one carries a trailing comment naming the id. |
 | Evidence | The job id in the report's property table is the authority for a row, and a conf's `rule` filter defines the rule set that job graded, so a rule outside the filter was not run by it. Where half a spec needs a different flag or budget, that spec is split across a conf pair and the unit table below names both confs; every other filter is a budget split within one unit. |
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
-| Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 8 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
+| Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 9 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 8 of the 11 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 9 of the 12 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -81,6 +81,7 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | `EngineConfigEffects.conf` | `EngineConfig.spec` | 1 | green: `configureImmediately` has the per-entry policy effects and call frame of an application, at up to three entries, and leaves `rootConfigured` untouched (`R_CFG_9_effects`) |
 | `EngineConfigFrame.conf` | `EngineConfig.spec` | 2 | green on `configureImmediately`, `requestConfiguration` and `invalidateRoot`: the written-namespace frame and `$policies` writer set, sound under re-entrant `configure` (`R_CFG_2`), and the root transition rule, value direction and state machine (`R_CFG_3`); both rules filter out `applyConfiguration` |
 | `EngineConfigFrameApply.conf` | `EngineConfig.spec` | 2 | green: the same frame (`R_CFG_2_apply1`) and root transition rule (`R_CFG_3_apply1`) on `applyConfiguration` at one entry |
+| `EngineConfigFrameCheck.conf` | `EngineConfig.spec` | 2 | `R-CFG-3` green on the check path |
 | `EngineConfigLight.conf` | `EngineConfig.spec` | 7 | green: the root is already deleted when each `configure` runs (`R_CFG_7`); every guard-slot probe targets the caller, at most two are made and none after a configure CALL, stated at the opcode level (`R_CFG_9_probe`); witnesses of a clearing entry (`W_CFG_1_W5`) and of the four guard-slot states (`W_CFG_1_W4a` to `W_CFG_1_W4d`) |
 | `EngineConfigRoot.conf` | `EngineConfig.spec` | 1 | green: two configuration arrays with the same root have the same length (`R_CFG_8_length`) |
 | `EngineConfigRootPin.conf` | `EngineConfig.spec` | 1 | green at one entry: an unrequested, immature, expired or paid `applyConfiguration` always reverts (`R_CFG_6a_one`) |
