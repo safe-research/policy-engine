@@ -8,7 +8,7 @@ Verified sources: `AccessSelector.sol`, `SignatureExtension.sol`. `contracts/` i
 
 | unit | subject | specs | confs |
 |---|---|---|---|
-| Lib (LIB) | `AccessSelector.sol`, `SignatureExtension.sol` | `Lib` | `Lib` |
+| Lib (LIB) | `AccessSelector.sol`, `SignatureExtension.sol` | `Lib` | `Lib`, `LibBitwise` |
 
 Harnesses: `LibHarness`, `SafePolicyGuardHarness`: 2 files, 2 contracts. Repo tests: `test/*.spec.ts`, run by `npm test`.
 
@@ -16,10 +16,10 @@ Harnesses: `LibHarness`, `SafePolicyGuardHarness`: 2 files, 2 contracts. Repo te
 
 | | |
 |---|---|
-| Green properties | 2 of 2: 2 unqualified, 0 qualified in the status cell |
+| Green properties | 9 of 9: 8 unqualified, 1 qualified in the status cell |
 | Blocked on prover limits | none |
 | Waived with measured evidence | 0 |
-| Confs and their jobs | 1 conf, each row citing a graded job: 1 has every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
+| Confs and their jobs | 2 confs, each row citing a graded job: 2 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
 | Repo tests | 175 passing, the `npm test` summary line (section 8) |
 
 ## 3. Property table
@@ -28,8 +28,15 @@ One row per property, `status` as recorded; `job` is the graded job whose rule-n
 
 | id | statement | rule id(s) | conf | status | job |
 |---|---|---|---|---|---|
+| `R-LIB-1` | Access key round-trip, hence injectivity | `R_LIB_1` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
+| `R-LIB-2` | Access key layout facts, as the README states them | `R_LIB_2` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
+| `R-LIB-3` | Intended collision of the zero selector with empty calldata | `R_LIB_3` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
+| `R-LIB-4` | Getters are total over every key | `R_LIB_4` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
+| `R-LIB-5` | Canonicalisation of the packed key | `R_LIB_5` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
 | `R-LIB-6` | `payload` revert-iff, with its length and content | `R_LIB_6` | `Lib.conf` | green | [8a1d1edd](https://prover.certora.com/output/950385/8a1d1eddd41345778af248e6fa9eba50?anonymousKey=292eef4663347ae41630fe1e5380fd77a5587659)  |
 | `R-LIB-7` | Envelope detection and `_decodeContext` composition, fail closed | `R_LIB_7` | `Lib.conf` | green | [8a1d1edd](https://prover.certora.com/output/950385/8a1d1eddd41345778af248e6fa9eba50?anonymousKey=292eef4663347ae41630fe1e5380fd77a5587659)  |
+| `R-LIB-8` | Selector content of a key | `R_LIB_8` | `LibBitwise.conf` | green, the selector's trailing three bytes tied to the word reader only (`L-LIB-4`) | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
+| `W-LIB-1` | Witnesses for the library readers | `W_LIB_1_envelope`<br>`W_LIB_1_selector` | `LibBitwise.conf` | green | [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054)  |
 
 ### 3.1 Blocked rows
 
@@ -45,17 +52,21 @@ No property row of this tree is blocked.
 
 One id of the series is retired, proven rather than waived, and is not counted above.
 
+| id | what it waived | why it is retired |
+|---|---|---|
+| `WAIVED-EC-2` | Selector content: `selectorOf(data)` equals the first four bytes of `data`, waived on the premise that CVL cannot index `bytes` | The premise is false: `LibHarness.byteAt(bytes,uint256)` indexes `bytes` and is already used by R-LIB-6 and R-LIB-7. The claim is R-LIB-8 above, green in `LibBitwise.conf` |
+
 ## 4. Assumptions
 
 | id | where | justification | discharge |
 |---|---|---|---|
-| `L-W0-HASH` | defined here | Executions hashing a `bytes` value longer than the conf's own bound are dropped, an assumed bound. | argument: the flag drops executions that hash past the bound, so a violation beyond it is missed, and no rule of the suite hashes an unbounded `bytes` |
-| `L-W0-BITWISE` | defined here | Bitwise operations are modelled exactly with bitvector theory instead of the default over-approximation. |  |
-| `L-W0-LOOP` | `conf/Lib.conf` | `loop_iter` is 3 in the shared scene: a configuration array is bounded to 3 entries where a rule carries one, and the calldata-to-memory copies of the library readers are unrolled 3 times where it does not. | argument: `optimistic_loop` is false, so a bound too low fails an unwinding assertion rather than assuming the rest away |
-| `L-LIB-1` | `specs/Lib.spec` | Executions hashing a `bytes` longer than 3200 bytes are dropped, an instance of L-W0-HASH. It is inert: no rule run under it hashes a symbolic `bytes`, and `conf/Lib.conf`, which runs the two length rules, sets neither key, so their claims hold at every length. | argument: inert, so nothing rests on it here |
-| `L-LIB-2` | `specs/Lib.spec` | Bitwise ops modelled exactly with bitvector theory for the AccessSelector packing rules, the Lib adoption of L-W0-BITWISE. |  |
-| `L-LIB-3` | `harnesses/LibHarness.sol` | Arithmetic and reader vocabulary are pure total functions of their inputs, ABI casts and zero-padded calldata reads, not mirrors of contract logic. |  |
-| `L-LIB-4` | `specs/Lib.spec` | A rule pinning selector content ties `selectorOf(d)` to `wordAt(d,0)` (an aligned `calldataload` plus a tail mask) and `byteAt(d,0)`, but not to `byteAt(d,1..3)`, so the selector's trailing three bytes are tied to the word reader, not the byte reader. |  |
+| `L-W0-HASH` | `conf/LibBitwise.conf` | Executions hashing a `bytes` value longer than the conf's own bound are dropped, an assumed bound. | argument: the flag drops executions that hash past the bound, so a violation beyond it is missed, and no rule of the suite hashes an unbounded `bytes` |
+| `L-W0-BITWISE` | `conf/LibBitwise.conf` and every conf setting `precise_bitwise_ops` | Bitwise operations are modelled exactly with bitvector theory instead of the default over-approximation. | job [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054) |
+| `L-W0-LOOP` | `conf/Lib.conf`, `conf/LibBitwise.conf` | `loop_iter` is 3 in the shared scene: a configuration array is bounded to 3 entries where a rule carries one, and the calldata-to-memory copies of the library readers are unrolled 3 times where it does not. | argument: `optimistic_loop` is false, so a bound too low fails an unwinding assertion rather than assuming the rest away |
+| `L-LIB-1` | `conf/LibBitwise.conf` | Executions hashing a `bytes` longer than 3200 bytes are dropped, an instance of L-W0-HASH. It is inert: no rule run under it hashes a symbolic `bytes`, and `conf/Lib.conf`, which runs the two length rules, sets neither key, so their claims hold at every length. | argument: inert, so nothing rests on it here |
+| `L-LIB-2` | `conf/LibBitwise.conf` | Bitwise ops modelled exactly with bitvector theory for the AccessSelector packing rules, the Lib adoption of L-W0-BITWISE. | job [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054) |
+| `L-LIB-3` | `harnesses/LibHarness.sol` | Arithmetic and reader vocabulary are pure total functions of their inputs, ABI casts and zero-padded calldata reads, not mirrors of contract logic. | job [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054) |
+| `L-LIB-4` | `specs/Lib.spec` | A rule pinning selector content ties `selectorOf(d)` to `wordAt(d,0)` (an aligned `calldataload` plus a tail mask) and `byteAt(d,0)`, but not to `byteAt(d,1..3)`, so the selector's trailing three bytes are tied to the word reader, not the byte reader. | job [adee3e24](https://prover.certora.com/output/950385/adee3e24e67b4ec1a07d93e439a9fba0?anonymousKey=a9cce25ceba0a520563a069811cc664c3e679054) |
 | `L-EC-8` | `harnesses/SafePolicyGuardHarness.sol` | `tryCheck` is an external self-call (`msg.sender == guard`), used only to classify the engine-level revert as `AccessDenied`, `PolicyReverted` or raw. |  |
 
 ## 5. Modelling decisions
@@ -87,6 +98,6 @@ certoraRun certora/conf/<name>.conf --wait_for_results all
 
 The repo-test count is the runner's own summary line, `npm test` ending in `175 passing`; it excludes every `[@bench]` title through `--grep` (`package.json`), so a raw `it(` count over `test/` is higher. Count from the `status` column, not by grepping a row's prose, and treat a job as evidence only for the conf whose rule set it ran: check that the job's Rules tab lists exactly that conf's `rule` filter. The conf and its `rule` filter are the reproducible evidence either way.
 
-The one conf under `certora/conf` has every leaf SUCCESS in the job its rows cite.
+Every one of the 2 confs under `certora/conf` has every leaf SUCCESS in the job its rows cite.
 
 The other jobs this report cites ran confs that are not part of this tree, and each citation says so; each such job stays readable through its link.
