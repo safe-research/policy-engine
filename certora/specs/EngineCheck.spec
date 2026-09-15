@@ -136,6 +136,18 @@ function expectedSelector(bytes data) returns bytes4 {
     return to_bytes4(0);
 }
 
+// The resolved policy for (safe, to, data, op) is p, off the escape hatch: on the hatch the engine returns without
+// calling any policy, which is what R-EC-4(b), R-EC-11 and the two hooks' iffs characterize.
+function resolvesTo(address safe, address to, uint256 value, bytes data,
+                    SafePolicyGuardHarness.Operation op, address p) returns AccessSelector.T {
+    require !badLen(data);
+    require !allowedCalls(to, value, data, op);
+    AccessSelector.T a; address resolved;
+    a, resolved = getPolicy(safe, to, data, op);
+    require resolved == p;
+    return a;
+}
+
 // R-EC-11: allowed(to,value,data,op) reverts iff badLen(data), and is true iff the call is a zero-value CALL to the
 // guard carrying a hatch selector.
 rule R_EC_11(address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op) {
@@ -322,6 +334,85 @@ rule R_EC_4b(env e, address safe, address to, uint256 value, bytes data,
         "a policy-served check returns and calls exactly the resolved policy, exactly once";
 }
 
+// R-EC-4(c): off the hatch with no policy configured, the revert class is exactly AccessDenied(0), except where the
+// target is the guard, which #103 denies first with GuardTargetDenied; the two classes are asserted side by side, so
+// the rule names a class for every input in its scope.
+rule R_EC_4c_noPolicy(env e, address safe, address to, uint256 value, bytes data,
+                      SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    require !badLen(data);
+    bool allowedC = allowedCalls(to, value, data, op);
+    require !allowedC;
+    AccessSelector.T k; address p;
+    k, p = getPolicy(safe, to, data, op);
+    require p == 0;
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    assert !ok, "an unserved target is denied";
+    assert to != currentContract => (sel == errAccessDenied() && arg == 0 && len == 36),
+        "AccessDenied(address(0))";
+    assert to == currentContract => (sel == errGuardTargetDenied() && len == 4),
+        "GuardTargetDenied, argument-free, for a call aimed at the guard off the hatch (#103)";
+}
+
+// R-EC-4(c): a clean bytes4 word that is not the magic value is AccessDenied(p), except where the target is the
+// guard, which #103 denies before the policy is ever called; both classes are asserted.
+rule R_EC_4c_wrongMagic(env e, address safe, address to, uint256 value, bytes data,
+                        SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    require !badLen(data);
+    bool allowedC = allowedCalls(to, value, data, op);
+    require !allowedC;
+    AccessSelector.T k; address p;
+    k, p = getPolicy(safe, to, data, op);
+    require p == deny || (p == mockPolicy && mockPolicy.checkMode() == MockPolicyHarness.CheckMode.WRONG_MAGIC);
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    assert !ok, "a non-magic answer is denied";
+    assert to != currentContract => (sel == errAccessDenied() && arg == p && len == 36),
+        "AccessDenied(p) for a non-magic answer";
+    assert to == currentContract => (sel == errGuardTargetDenied() && len == 4),
+        "GuardTargetDenied instead, the policy never being reached (#103)";
+}
+
+// R-EC-4(c): a reverting policy denies the transaction. The PolicyReverted class and the forwarded revert data are
+// in the commented-out rule below.
+rule R_EC_4c_revert(env e, address safe, address to, uint256 value, bytes data,
+                    SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    require !badLen(data);
+    AccessSelector.T k = resolvesTo(safe, to, value, data, op, mockPolicy);
+    address p = mockPolicy;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REVERTS;
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    // The conjunction is split: the provable half stands here; the class half is commented out below.
+    assert !ok, "a reverting policy denies the transaction";
+}
+
+// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
+/*
+// R-EC-4(c), the classification half: the policy's own revert data is forwarded; blocked: the class is refuted while
+// the denial itself holds. Under #103 the forwarding claim speaks only for a target that is not the guard, and
+// the guard target gets its own class here rather than being dropped.
+rule R_EC_4c_revertClass(env e, address safe, address to, uint256 value, bytes data,
+                         SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
+    require !badLen(data);
+    AccessSelector.T k = resolvesTo(safe, to, value, data, op, mockPolicy);
+    address p = mockPolicy;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REVERTS;
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
+    assert (!ok && to != currentContract) => sel == errPolicyReverted(),
+        "the class is PolicyReverted, not AccessDenied";
+    assert (!ok && to != currentContract) => arg == p, "the reverting policy is named in the error";
+    assert (!ok && to != currentContract) => len >= 100,
+        "the policy's own revert data is forwarded, not swallowed";
+    assert to == currentContract => (!ok && sel == errGuardTargetDenied() && len == 4),
+        "a guard-targeted call is denied before the policy runs, so its revert data is not what is forwarded (#103)";
+}
+*/
 
 // R-EC-5: the owner hook reverts iff it is paid, gas-priced, mid-check, malformed in signatures or data, aimed at the
 // guard off the hatch, or the resolved policy is absent or does not accept; on success S and M are 0. The
@@ -504,6 +595,23 @@ rule R_EC_15(env e, address to, uint256 value, bytes data, SafePolicyGuardHarnes
     assert revA == revB, "baseGas / gasToken / refundReceiver / msgSender never change the verdict";
     assert checkingSafe() == sA && checkingModule() == mA,
         "... nor either sentinel (msgSender is never authorised on; the root README's trust-of-check-inputs note, B-4)";
+}
+
+// R-EC-17: a checked transaction whose target is the guard itself is denied, at all three entries. Off the escape
+// hatch the engine reverts before it resolves a policy, so a policy configured for the guard cannot serve the call
+// and no policy state is spent on it (#103, PolicyEngine.sol:194); on the hatch the three configuration selectors
+// still pass, which R-EC-11 states and this row does not touch.
+
+// R-EC-17, the engine entry, which is the one that can name the class (L-EC-8).
+rule R_EC_17_engine(env e, address safe, uint256 value, bytes data,
+                    SafePolicyGuardHarness.Operation op, bytes ctx) {
+    require safe != 0 && checkingSafe() == safe;
+    require !badLen(data);
+    require !allowedCalls(currentContract, value, data, op);
+    bool ok; bytes4 sel; address arg; uint256 len; address r;
+    ok, sel, arg, len, r = tryCheck(e, safe, currentContract, value, data, op, ctx);
+    assert !ok && sel == errGuardTargetDenied() && len == 4,
+        "the engine entry denies a guard-targeted call with GuardTargetDenied, whatever policy is configured";
 }
 
 // R-EC-17, the Safe transaction-guard hook: the denial reaches the owner path and no policy runs.

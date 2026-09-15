@@ -25,6 +25,19 @@ definition SEL_CONFIGURE_IMMEDIATELY() returns bytes4 = to_bytes4(sig:configureI
 // `IPolicy.configure`, the one policy-decoded selector declared here.
 definition SEL_CONFIGURE() returns bytes4 = to_bytes4(0xda0b9a55);
 
+// Error selectors the rules classify revert data with, as 4-byte literals: CVL has no `sig:` form for
+// an error. Each is `cast sig "<the signature named above it>"`, the same four bytes the contract's
+// ABI carries for that error.
+// `cast sig "AccessDenied(address)"` (PolicyEngine.sol:80).
+definition errAccessDenied() returns bytes4 = to_bytes4(0x0504a20d);
+// Commented out with the rule that used it.
+/*
+// `cast sig "PolicyReverted(address,bytes)"` (PolicyEngine.sol:89).
+definition errPolicyReverted() returns bytes4 = to_bytes4(0xcaa49c33);
+*/
+// `cast sig "GuardTargetDenied()"` (PolicyEngine.sol:99).
+definition errGuardTargetDenied() returns bytes4 = to_bytes4(0x7bd59088);
+
 // `_decodeSelector` reverts `InvalidSelector` for 1-3 bytes (PolicyEngine.sol:247-255).
 // badLen is declared in Vocabulary.spec.
 
