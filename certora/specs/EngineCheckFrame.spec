@@ -57,6 +57,17 @@ rule R_EC_1(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c
     assert checkingModule() == m, "$checkingModule is immutable while a check is in progress";
 }
 
+// R-EC-1's applyConfiguration node at n <= 1, the n <= 3 form having come back UNKNOWN at contract_recursion_limit 1 /
+// summary_recursion_limit 1 (L-W0-RECUR).
+rule R_EC_1_apply1(env e, SafePolicyGuard.Configuration[] c, address s, address m) {
+    require e.msg.sender != 0;
+    require checkingSafe() == s && s != 0 && checkingModule() == m;
+    require c.length <= 1;
+    applyConfiguration(e, c);
+    assert checkingSafe() == s, "$checkingSafe is immutable while a check is in progress (applyConfiguration, n <= 1)";
+    assert checkingModule() == m, "$checkingModule is immutable while a check is in progress (applyConfiguration, n <= 1)";
+}
+
 // The check-path entry points: both Safe hooks, the engine entry, and the `tryCheck` scaffolding.
 definition isCheckPath(method f) returns bool =
     f.selector == sig:checkTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,uint256,uint256,uint256,address,address,bytes,address).selector
@@ -119,3 +130,20 @@ rule EC_ConfigFrame(env e, method f, calldataarg args, SafePolicyGuard.Configura
         "requestConfiguration/invalidateRoot make no outgoing call (C_f is empty)";
 }
 
+// R-CFG-2 re-instantiated, the applyConfiguration node of EC_ConfigFrame at n <= 1; R_CFG_2_apply1 states that
+// node's first two asserts in the EngineConfig scene at n <= 1, and R_CFG_2 filters that node out.
+rule EC_ConfigFrame_apply1(env e, SafePolicyGuard.Configuration[] c,
+                           address x, AccessSelector.T k, bytes32 r) {
+    require e.msg.sender != 0;
+    resetFrame();
+    require c.length <= 1;
+    address pol0 = policyAt(x, k);
+    uint256 root0 = rootConfigured(x, r);
+    applyConfiguration(e, c);
+    bool wrotePolicy = policyAt(x, k) != pol0;
+    bool wroteRoot = rootConfigured(x, r) != root0;
+    assert wrotePolicy => (x == e.msg.sender || gCalled[x]),
+        "a $policies namespace that changed is the sender's or a callee's (applyConfiguration, n <= 1)";
+    assert wroteRoot => (x == e.msg.sender || gCalled[x]),
+        "a rootConfigured namespace that changed is the sender's or a callee's (applyConfiguration, n <= 1)";
+}
