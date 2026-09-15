@@ -4,7 +4,7 @@ Certora/CVL suite for `contracts/SafePolicyGuard.sol`, `contracts/core/PolicyEng
 
 ## Results
 
-97 of 97 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
+107 of 107 property rows are green. The table with every row's rule, conf, status and job is in `certora/VERIFICATION_REPORT.md`.
 
 ## Install and run
 
@@ -14,22 +14,22 @@ From the repository root:
 pip install -r certora/requirements.txt      # certora-cli==8.19.1
 ```
 
-Also required: a `solc` 0.8.30 binary named `solc-0.8.30` on `PATH`, which every conf pins together with `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000` (the 6 real-Safe confs map three of the four per file and keep one `solc` for the whole conf, see "Real Safe in scene" below), and `CERTORAKEY` in the environment.
+Also required: a `solc` 0.8.30 binary named `solc-0.8.30` on `PATH`, which every conf pins together with `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000` (the 7 real-Safe confs map three of the four per file and keep one `solc` for the whole conf, see "Real Safe in scene" below), and `CERTORAKEY` in the environment.
 
 ```sh
 certoraRun certora/conf/Lib.conf --wait_for_results all      # one conf, waiting for the cloud verdict
 certoraRun certora/conf/Lib.conf --compilation_steps_only    # local compile and CVL type-check, no key
 ```
 
-Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 45 raise to 1800 or 3600 seconds.
+Grade a run in the Certora web UI: the Rules tab is the authority for a verdict, listing every rule's verdict, and the conf is green only when every leaf there is SUCCESS; the Job Info tab is the authority for the flags the run actually used, which a conf only requests. `Results.txt` is neither: for `satisfy` rules its `FAIL:`/`Violated:` wording is inverted and healthy sanity sub-rules print `Violated`. Submit one conf at a time: a conf can hold the prover for its whole `smt_timeout`, which 21 of the 46 raise to 1800 or 3600 seconds.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
-| `certora/specs/` | 26 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
-| `certora/conf/` | 45 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
-| `certora/harnesses/` | 9 files, 12 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `MultiSendPolicyHarness`, `EngineRecorderHarness`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `RealSafeHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`. |
+| `certora/specs/` | 27 CVL specs. `Vocabulary.spec` holds scene-free definitions, which a spec imports whatever its scene. `Common.spec` imports it and carries the shared `methods` block and the shared definitions of the guard's scene. `Common.spec` also carries the invariant `sentinelsClear`. |
+| `certora/conf/` | 46 run configurations, one or more per spec. A spec is split across confs where one run does not converge or needs a different flag. |
+| `certora/harnesses/` | 10 files, 13 contracts: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMock`, `GuardProbeResponderMock`, `MultiSendPolicyHarness`, `EngineRecorderHarness`, `ERC20TransferPolicyHarness`, `ERC20ApprovePolicyHarness`, `RealSafeHarness`, `SafeMockHarness`, `SafePolicyGuardHarness`, `SafenetHarness`. |
 | `certora/requirements.txt` | The pinned prover client, `certora-cli==8.19.1`. |
 | `certora/README.md` | This file: install, layout, conventions, the unit tables and the evidence rules. |
 | `certora/VERIFICATION_REPORT.md` | Results, property table, assumption table, findings, not-proven list. |
@@ -44,9 +44,9 @@ Grade a run in the Certora web UI: the Rules tab is the authority for a verdict,
 | Evidence | The job id in the report's property table is the authority for a row, and a conf's `rule` filter defines the rule set that job graded, so a rule outside the filter was not run by it. Where half a spec needs a different flag or budget, that spec is split across a conf pair and the unit table below names both confs; every other filter is a budget split within one unit. |
 | Harness naming | `<Subject>Harness.sol` subclasses or mirrors a deployed contract and adds only view accessors, a mock stands in for code outside the verified set, and the two shared mocks live together in `Mocks.sol`, which a conf picks from with the `Mocks.sol:<Contract>` form and never as a bare path; a single-use mock sits beside the harness that needs it. Neither is compiled into the production build. |
 | Safe in scene | The Safe a rule talks about is `SafeMockHarness` in the 24 `EngineCheck*`/`EngineConfig*` confs of `certora/conf/` (`L-W0-1`). The guard scenes keep the mock because their subject is the guard slot, which on a real Safe has no state variable to `require`, `getGuard` being `internal` and `setGuard` `authorized`; the mock answers `getStorageAt` over havoced storage, so a rule fixes the slot word with `require`. |
-| Real Safe in scene | The Safe a rule talks about is Safe v1.5.0 itself, inherited unchanged by `RealSafeHarness` (`L-SAFE-1`), in the 6 policy confs (`IncreasedThreshold.conf`, `IncreasedThresholdArgs.conf`, `IncreasedThresholdOpenSafe.conf`, `CoSigner.conf`, `CoSignerArgs.conf` and `CoSignerModulePath.conf`), whose rows bind the verdict to Safe's own nonce, transaction hash, owner list and threshold. Safe's own source does not compile via IR, so those confs carry `solc_via_ir_map`, `solc_evm_version_map` and `solc_optimize_map` in place of the three scalar flags: the verified policy keeps the suite's settings and `RealSafeHarness` compiles for `paris` with the optimizer off, the settings `hardhat.config.ts:68-77` builds Safe's own source with. The fourth setting, the compiler binary, is one scalar per conf, so that code is verified under `solc-0.8.30` rather than the 0.8.28 the repo pins for it (`L-SAFE-1`). |
+| Real Safe in scene | The Safe a rule talks about is Safe v1.5.0 itself, inherited unchanged by `RealSafeHarness` (`L-SAFE-1`), in the 7 policy confs (`IncreasedThreshold.conf`, `IncreasedThresholdArgs.conf`, `IncreasedThresholdOpenSafe.conf`, `CoSigner.conf`, `CoSignerArgs.conf`, `CoSignerModulePath.conf` and `Safenet.conf`), whose rows bind the verdict to Safe's own nonce, transaction hash, owner list and threshold. Safe's own source does not compile via IR, so those confs carry `solc_via_ir_map`, `solc_evm_version_map` and `solc_optimize_map` in place of the three scalar flags: the verified policy keeps the suite's settings and `RealSafeHarness` compiles for `paris` with the optimizer off, the settings `hardhat.config.ts:68-77` builds Safe's own source with. The fourth setting, the compiler binary, is one scalar per conf, so that code is verified under `solc-0.8.30` rather than the 0.8.28 the repo pins for it (`L-SAFE-1`). |
 | Compiler | Every conf pins `solc-0.8.30`, `solc_via_ir: true`, `solc_evm_version: cancun` and `solc_optimize: 10000000`, matching `hardhat.config.ts`, and any divergence proves something about different bytecode. |
-| Budget | 21 of the 45 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
+| Budget | 21 of the 46 confs raise `smt_timeout` to 1800 or 3600 seconds and the rest run at the certora-cli default of 300 seconds per SMT query, a rule over budget reporting TIMEOUT and never green. `rule_sanity: basic` is set in every conf, and a `SANITY_FAIL` leaf is advisory: the rule's own assert still reports its verdict and the report dispositions each one. |
 
 ## Units
 
@@ -321,6 +321,40 @@ The 5 cases of `test/increasedThresholdPolicy.spec.ts` under `Signature modes` r
 | `WAIVED-H-3` | ECDSA recovery semantics and the ERC-1271 wire format; ERC-1271 cosigners accepting an empty signature | waived: verdict symbolic; axiom countersigned for EOA cosigners only |
 | `WAIVED-H-4` | Safe `checkNSignatures` internals (`GS020/021/025/026`, `v` modes, owner order, `approvedHashes`) | waived: safe is environment |
 | `WAIVED-H-9` | CoSigner `InvalidSelector` (`P/CoSignerPolicy:34`) is dead code | waived: no property can cover unreachable code; cosmetic report item |
+
+### Safenet
+
+| conf | spec | rules | status |
+|---|---|---|---|
+| `Safenet.conf` | `Safenet.spec` | 26 | green, SafenetPolicy in isolation: the revert characterisation over value, module, context shape, a known epoch key, nonce, unspent and the FROST verdict, the `safeTxHash` clause of `R_SN_1_binding` blind under `L-BIND-9` (`R_SN_1`, `R_SN_1_zeroNonce`, `R_SN_1_failClosed`, `R_SN_1_gatesBeforeVerdict`, `R_SN_1_binding`, `R_SN_1_verdictNotTransferable`, `R_SN_1_anyCalldata`); a non-zero module reverts before the verdict (`R_SN_2`); a non-reverting check marks the nonce spent and touches nothing else (`R_SN_3`); once per nonce (`R_SN_4`, `R_SN_4_emptyContext`, `R_SN_4_emptyData`); `known` changes only in `updateEpoch`, false to true (`R_SN_5`, `R_SN_5_gettersAgree`); the rollover in both directions (`R_SN_6`, `R_SN_6_effect`, `R_SN_6_anchor`); the zero key is never trusted (`INV_SN_1`); `updateEpoch` is permissionless (`R_SN_7`); `$spent` write provenance (`R_SN_8`, `R_SN_8_checkKeys`); `configure` returns `true`, reverts iff `msg.value != 0` and has no storage effect (`R_SN_9`, `R_SN_9_anyCalldata`); witnesses `W_SN_1a`, `W_SN_1b` and `W_SN_1c` |
+
+Tests: `test/safenetPolicy.spec.ts`, 11 cases under `Epoch rollover: signature binding` and `Curve checks`.
+
+The rollover cases stand behind `WAIVED-B-2`.
+
+The curve cases stand behind `WAIVED-H-2`.
+
+#### Ids introduced here
+
+| id | claim | discharge |
+|---|---|---|
+| `L-SN-1` | The FROST verdict is not computed: it is a free `persistent ghost` function of the key, signature and message, and the summary reverts when it is false at both call sites | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-2` | The model rejects `(0,0)` only, where the real function also rejects every off-curve non-zero point (`Secp256k1.sol:181-183,226-233`) | test/safenetPolicy.spec.ts: "Should reject a non-zero genesis group key that is off the curve" |
+| `L-SN-3` | The two message constructions are free deterministic uninterpreted functions of their arguments rather than `NONDET`, while `domain` keeps `NONDET` under L-SN-14 | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-4` | Rules whose right-hand side mentions the Safe's nonce or its derived transaction hash are stated about the Safe in scene, Safe v1.5.0 itself through `RealSafeHarness`, the `default NONDET` branch being the exact summary of a STATICCALL to an unknown contract | argument: the default NONDET branch is the exact summary of a STATICCALL to an unknown contract |
+| `L-SN-6` | The verify target is `SafenetHarness is SafenetPolicy`, which adds exactly two things: a constructor forwarding the four production arguments, and `decodeAttestation(bytes)`, `SafenetPolicy.sol:115-121` as an external function | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-7` | Antecedent and observation-ghost requires: each states the property's own hypothesis (`module != 0`, `nonce() == 0`, the pair is new) or initialises a `persistent ghost` that is not contract state (`!frostCalled`) | argument |
+| `L-SN-8` | The typed rules quantify over canonically decodable argument tuples, not raw calldata, as in L-POL-6 and its instances | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-9` | The `nonce() == 0` branch is excluded from the iff and given its own rule | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-10` | The unit's instance of L-POL-CTX: on certora-cli 8.19.1, under `precise_bitwise_ops: true`, the prover's `assert` model drops every input pair in which exactly one free CVL `bytes` is the empty byte string, once the rule makes a call carrying a `bytes`. `conf/Safenet.conf` leave the flag unset, which is the sound side for an `assert`, so the unit's `assert` rules are not exposed and its empty-`bytes` rules are regression markers; what runs on the coarse model there is the `satisfy` witnesses, section 7 | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-11` | The suite-wide hashing bound, and a pessimistic loop bound that is inert in this scene | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-12` | Not an assumption about the code but a measured prover artifact, and the minimal shape that works around it: reading the `uint64`, `address` or struct return of a `@withrevert` call trips an internal prover assert on the reverting branch | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-13` | `method f` ranges over the subject's own methods only, not over the whole scene | job [ebc38a39](https://prover.certora.com/output/950385/ebc38a3935284313ae1a10c97eb3dac7?anonymousKey=e41c54a08f097276d1bb204407c356e8c4131021) |
+| `L-SN-14` | The EIP-712 domain-separator derivation is not modelled: `NONDET` replaces `ConsensusMessages.sol:45-53`, and every message is built from the immutable the constructor stored (`SafenetPolicy.sol:42`) | test/safenetPolicy.spec.ts |
+| `L-SN-15` | `ISafe.getTransactionHash` is summarized capture-only and the real hash code does not run, so a rule that reads its result asserts the arguments of the derivation, never a recomputed offset-30 hash |  |
+| `W-SN-1` | a well-formed attestation clearing, and a rollover recording a new trusted pair | witness row |
+| `WAIVED-H-1` | FROST/Schnorr cryptographic soundness (`FROST.verify`, `challenge`, `mulmuladd`, ecrecover trick, `_divmod`) | waived: not expressible; verdict symbolic |
+| `WAIVED-H-2` | On-curve check for non-zero points (`_satisfiesCurveEquation`) | waived: modelled zero-point-only, the superset `L-SN-2` records |
 
 ## Evidence rules
 
