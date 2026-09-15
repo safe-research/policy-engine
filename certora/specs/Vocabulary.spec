@@ -20,3 +20,8 @@ definition CFG_MAX_BYTES() returns mathint = 256;
 definition MS_MAX_BYTES() returns mathint = 375;
 definition MS_MAX_CTX() returns mathint = 416;
 
+// Owner-count bound on the Safe in scene.
+definition MAX_OWNERS() returns uint256 = 4;
+
+// OwnerManager.SENTINEL_OWNERS (SAFE/base/OwnerManager.sol:17).
+definition SENTINEL() returns address = 0x0000000000000000000000000000000000000001;
