@@ -633,6 +633,46 @@ rule R_CFG_11_one(env e1, env e2, bytes32 r, SafePolicyGuard.Configuration[] c) 
         "and only while the EXPIRY window of that request is still open (#101)";
 }
 
+// R-CFG-2 at n <= 1 on the applyConfiguration node, which the parametric form filters out.
+rule R_CFG_2_apply1(env e, SafePolicyGuard.Configuration[] c, address x, AccessSelector.T k, bytes32 r) {
+    require c.length <= 1;
+    resetFrame();
+    address pol0 = policyAt(x, k);
+    uint256 root0 = rootConfigured(x, r);
+
+    applyConfiguration(e, c);
+
+    assert (policyAt(x, k) != pol0) => (x == e.msg.sender || gCalled[x]),
+        "a $policies namespace that changed is the sender's or a callee's";
+    assert (rootConfigured(x, r) != root0) => (x == e.msg.sender || gCalled[x]),
+        "a rootConfigured namespace that changed is the sender's or a callee's";
+}
+
+// R-CFG-3 at n <= 1 on the applyConfiguration node, in the four clauses of the parametric form; clause (ii) gains
+// #101's upper end. Clause (iii) is unmoved here: the expired re-request the parametric form has to admit is
+// requestConfiguration's, not this node's.
+rule R_CFG_3_apply1(env e, SafePolicyGuard.Configuration[] c, address s, bytes32 r) {
+    require c.length <= 1;
+    resetFrame();
+    uint256 v0 = rootConfigured(s, r);
+
+    applyConfiguration(e, c);
+
+    uint256 v1 = rootConfigured(s, r);
+
+    assert (v0 == 0 && v1 != 0) =>
+        (to_mathint(v1) == e.block.timestamp + DELAY() && gCalled[s]),
+        "(i) applyConfiguration itself never creates a pending root; a callee's own request is T + DELAY";
+    assert (v0 != 0 && v1 == 0) =>
+        ((s == e.msg.sender && configurationRoot(c) == r && e.block.timestamp >= v0
+          && !expired(e.block.timestamp, v0)) || gCalled[s]),
+        "(ii) applyConfiguration clears only the sender's own in-window root of this array";
+    assert (v0 != 0 && v1 != 0 && !gCalled[s]) => v1 == v0,
+        "(iii) a namespace not called during f never has its maturity shortened or extended";
+    assert (v0 != 0 && v1 != 0 && gCalled[s] && v1 != v0) => to_mathint(v1) == e.block.timestamp + DELAY(),
+        "(iii) a called namespace can only refresh its own root to T + DELAY";
+}
+
 // R-CFG-8 (field half) at n <= 1.
 rule R_CFG_8_fields_one(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configuration[] c2, uint256 i) {
     require c1.length <= 1 && c2.length <= 1;
