@@ -180,6 +180,15 @@ function someEntryFails(SafePolicyGuard.Configuration[] c) returns bool {
     return bad;
 }
 
+function calleesAreArrayPolicies(SafePolicyGuard.Configuration[] c, address x) returns bool {
+    uint256 n = c.length;
+    bool ok = false;
+    if (n > 0) { if (configPolicy(c, 0) == x && x != 0) { ok = true; } }
+    if (n > 1) { if (configPolicy(c, 1) == x && x != 0) { ok = true; } }
+    if (n > 2) { if (configPolicy(c, 2) == x && x != 0) { ok = true; } }
+    return ok;
+}
+
 // R-CFG-4: requestConfiguration(r) reverts iff paid, pending inside its window, or overflowing, and otherwise
 // matures that entry alone at T + DELAY. Meaning changed by #101: a set entry no longer blocks the request
 // unconditionally, only while the window is open (SafePolicyGuard.sol:365), and `_expired`'s own checked
@@ -248,6 +257,31 @@ rule R_CFG_8_length(SafePolicyGuard.Configuration[] c1, SafePolicyGuard.Configur
     require c1.length <= 3 && c2.length <= 3;
     require configurationRoot(c1) == configurationRoot(c2);
     assert c1.length == c2.length, "equal roots => equal length";
+}
+
+// R-CFG-9 (effects): configureImmediately has the R-CFG-6(c) policy effects and R-CFG-6(d) call frame and leaves
+// rootConfigured untouched.
+rule R_CFG_9_effects(env e, SafePolicyGuard.Configuration[] c, uint256 i, address sx, AccessSelector.T kx,
+                     address s2, bytes32 r2, address x) {
+    require c.length <= 3;
+    require mockPolicy.configureMode() != MockPolicyHarness.ConfigureMode.CALL_CONFIG;
+    require i < c.length;
+    resetFrame();
+
+    address polOther0 = policyAt(sx, kx);
+    uint256 root0 = rootConfigured(s2, r2);
+
+    configureImmediately(e, c);
+
+    assert policyAt(e.msg.sender, configKey(c, i)) == lastPolicyForKey(c, configKey(c, i)),
+        "each named key holds the last entry's policy (last-write-wins)";
+    assert (sx != e.msg.sender || !keyInArray(c, kx)) => policyAt(sx, kx) == polOther0,
+        "no other (safe, key) entry of $policies changes";
+    assert rootConfigured(s2, r2) == root0, "rootConfigured is untouched for every (safe, root)";
+    assert gConfigureCalls == nonZeroPolicyCount(c) && gCalls == nonZeroPolicyCount(c),
+        "configure is called exactly once per non-zero entry, and nothing else is called";
+    assert gValueCalls == 0 && gDelegateCalls == 0, "no value-bearing call and no DELEGATECALL";
+    assert gCalled[x] => calleesAreArrayPolicies(c, x), "every callee is one of the array's non-zero policies";
 }
 
 
