@@ -98,7 +98,15 @@ hook STATICCALL(uint g, address addr, uint argsOffset, uint argsLength, uint ret
     }
 }
 
+// #101's application window. `_expired(v)` is `block.timestamp >= v + EXPIRY` in checked arithmetic
+// (SafePolicyGuard.sol:329-330), so the sum reverts with a Panic instead of answering when it overflows,
+// and `expiredOrPanics` is the disjunction a revert-iff needs. EXPIRY stays symbolic throughout: the
+// constructor's `expiry > 0` (ZeroExpiryNotAllowed, :152) is nowhere assumed, so EXPIRY == 0, which makes
+// every matured root instantly expired, is one of the cases these rules cover.
+definition windowOverflows(uint256 v) returns bool = to_mathint(v) + to_mathint(EXPIRY()) > max_uint256;
 definition expired(uint256 t, uint256 v) returns bool = to_mathint(t) >= to_mathint(v) + to_mathint(EXPIRY());
+definition expiredOrPanics(uint256 t, uint256 v) returns bool = expired(t, v) || windowOverflows(v);
+
 // R-CFG-4: requestConfiguration(r) reverts iff paid, pending inside its window, or overflowing, and otherwise
 // matures that entry alone at T + DELAY. Meaning changed by #101: a set entry no longer blocks the request
 // unconditionally, only while the window is open (SafePolicyGuard.sol:365), and `_expired`'s own checked
@@ -254,5 +262,23 @@ rule W_CFG_1_W6(env e1, env e2, SafePolicyGuard.Configuration[] c) {
     uint256 pending = rootConfigured(e1.msg.sender, root);
     applyConfiguration(e2, c);
     satisfy pending != 0 && rootConfigured(e2.msg.sender, root) == 0;
+}
+
+
+// Reduced-scope twins at n <= 1 (L-CFG-LOOP-N1); the unrestricted forms are commented out above.
+
+// R-CFG-6(a) at n <= 1: an unrequested, immature, expired or paid applyConfiguration always reverts; the expired case
+// is #101's.
+rule R_CFG_6a_one(env e, SafePolicyGuard.Configuration[] c) {
+    require c.length <= 1;
+    bytes32 root = configurationRoot(c);
+    uint256 v0 = rootConfigured(e.msg.sender, root);
+
+    applyConfiguration@withrevert(e, c);
+    bool reverted = lastReverted;   // read before expiredOrPanics, which calls EXPIRY()
+
+    assert (e.msg.value != 0 || v0 == 0 || e.block.timestamp < v0
+            || expiredOrPanics(e.block.timestamp, v0)) => reverted,
+        "an unrequested, immature or expired root never applies, and the entry point is not payable";
 }
 
