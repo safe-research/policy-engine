@@ -431,6 +431,23 @@ rule R_EC_6_invocation(env e, address to, uint256 value, bytes data,
         "the module path forwards an empty context (SafePolicyGuard.sol:256)";
 }
 
+// R-EC-14: the guard performs no DELEGATECALL anywhere.
+rule R_EC_14_noDelegateCall(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c)
+    filtered { f -> !f.isView && !f.isPure }
+{
+    resetFrame();
+    if (f.selector == sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector) {
+        require c.length <= 3;
+        applyConfiguration(e, c);
+    } else if (f.selector == sig:configureImmediately(SafePolicyGuard.Configuration[]).selector) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+    assert gDelegateCalls == 0, "the guard never DELEGATECALLs";
+}
+
 // R-EC-14: during a check every outgoing CALL the guard makes is IPolicy.checkTransaction with no value to the policy
 // resolved for that invocation.
 rule R_EC_14(env e, address to, uint256 value, bytes data,
