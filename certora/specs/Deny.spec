@@ -45,3 +45,19 @@ rule R_DENY_1_anyCalldata(env e, calldataarg args) {
         "DenyPolicy.checkTransaction never returns the magic value, for every raw calldata";
 }
 
+// W-DENY-1: a non-reverting `checkTransaction` returning zero on the shape W_ALLOW_1 fixes, so R-DENY-1's
+// success branch is not vacuous.
+rule W_DENY_1(
+    env e,
+    address safe,
+    address to,
+    uint256 value,
+    bytes data,
+    DenyPolicy.Operation op,
+    address module,
+    bytes context,
+    AccessSelector.T access
+) {
+    bytes4 r = checkTransaction(e, safe, to, value, data, op, module, context, access);
+    satisfy r == to_bytes4(0) && value > 0 && data.length >= 4 && module != 0;
+}
