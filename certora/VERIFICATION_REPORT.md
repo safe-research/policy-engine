@@ -28,7 +28,7 @@ Harnesses: `GuardSlotDecodePin`, `LibHarness`, `MockPolicyHarness`, `SafeSlotMoc
 | Blocked on prover limits | none |
 | Waived with measured evidence | 0 |
 | Confs and their jobs | 45 confs, each row citing a graded job: 45 have every leaf SUCCESS, 0 carry a non-SUCCESS leaf |
-| Repo tests | 203 passing, the `npm test` summary line (section 8) |
+| Repo tests | 215 passing, the `npm test` summary line (section 8) |
 
 ## 3. Property table
 
@@ -142,7 +142,7 @@ No property row of this tree is blocked.
 
 ### 3.2 Waivers
 
-24 written waivers. A written waiver takes a claim out of scope and is not a property row: section 2's `Waived with measured evidence` row counts the property rows instead. A waiver names a repo test only by quoting that test's `it(` title and the concrete boundary it reaches (D-012), each quoted title matching exactly one `it(` title in `test/`; the others waive with an argument, a superseding rule or a section of this report.
+25 written waivers. A written waiver takes a claim out of scope and is not a property row: section 2's `Waived with measured evidence` row counts the property rows instead. A waiver names a repo test only by quoting that test's `it(` title and the concrete boundary it reaches (D-012), each quoted title matching exactly one `it(` title in `test/`; the others waive with an argument, a superseding rule or a section of this report.
 
 | id | what was waived | reason | test |
 |---|---|---|---|
@@ -155,6 +155,7 @@ No property row of this tree is blocked.
 | `WAIVED-CFG-3` | keccak collision resistance for roots | prover model = injective | n/a |
 | `WAIVED-CFG-4` | Real Safe proxy semantics of `getStorageAt` and of `setGuard`/`setModuleGuard` writing the slots; slot constants equal the Safe's | Safe is environment; constants are `private` | `test/safePolicyGuardConfiguration.spec.ts`: "Should not be able to configure immediately even when a policy permits calling the guard" |
 | `WAIVED-CFG-5` | Non-canonical calldata of the same logical `Configuration[]` yields the same root | solc re-encoding fact, not a rule | none: solc re-encoding fact |
+| `WAIVED-S-1` | Exact ABI-decoder boundary for unbounded `bytes` beyond what `R-ERC20T-2`, `R-ERC20A-2`, `R-OTA-4`, `R-AMOD-2`, `R-COS-5` and `R-IT-7` assert; non-canonical `uint64` word in the Safenet context | decoder bytecode; content not constructible in CVL | `test/safenetPolicy.spec.ts`: "Should reject an epoch word that is not a canonical uint64" |
 | `WAIVED-S-2` | Policy events (`OneTimeAllowanceUsed`, `RecipientPermissionUsed`, `SpenderPermissionUsed`) and "no event when nothing is spent" | no event assertions | `test/oneTimeAllowPolicy.spec.ts`: "Should emit when a transaction spends the allowance" |
 | `WAIVED-S-3` | `configure` with more than `loop_iter` (3) allowlist entries, in both ERC20 policies | the `L-POL-1` bound. For the approve policy the twin of the quoted case is `test/erc20ApprovePolicy.spec.ts`: "Should write every entry of a spender list, with its own permission" | `test/erc20TransferPolicy.spec.ts`: "Should write every entry of a recipient list, with its own permission" |
 | `WAIVED-S-4` | Spend rollback when execution fails (a spent ONCE/OTA grant is restored because the Safe transaction reverts), needed by the OneTimeAllow and the two ERC20 spend rows | Only the Safe-atomicity limb is environment. The guard half is in-scope production code and unproven: `SafePolicyGuard.sol:239-241` and `:268-270` are the only thing stopping a policy's spend from committing against an action that never took effect. | `test/safePolicyGuardExecution.spec.ts`: "Should restore a one-time grant when the transaction execution fails" |
@@ -331,11 +332,11 @@ No conf of this tree runs a rule for the properties below. Their rules stay in t
 # grade a job at https://prover.certora.com/output/950385/<32-hex job id>: the Rules tab lists every
 # rule's verdict (green only if all are SUCCESS), the Job Info tab the flags the server ran with,
 # which are the authority over conf text
-npm test                                                              # 203 repo tests at this tree
+npm test                                                              # 215 repo tests at this tree
 certoraRun certora/conf/<name>.conf --wait_for_results all
 ```
 
-The repo-test count is the runner's own summary line, `npm test` ending in `203 passing`; it excludes every `[@bench]` title through `--grep` (`package.json`), so a raw `it(` count over `test/` is higher. Count from the `status` column, not by grepping a row's prose, and treat a job as evidence only for the conf whose rule set it ran: check that the job's Rules tab lists exactly that conf's `rule` filter. The conf and its `rule` filter are the reproducible evidence either way.
+The repo-test count is the runner's own summary line, `npm test` ending in `215 passing`; it excludes every `[@bench]` title through `--grep` (`package.json`), so a raw `it(` count over `test/` is higher. Count from the `status` column, not by grepping a row's prose, and treat a job as evidence only for the conf whose rule set it ran: check that the job's Rules tab lists exactly that conf's `rule` filter. The conf and its `rule` filter are the reproducible evidence either way.
 
 One conf of this tree is merged from scoped confs: `EngineConfigApply.conf` absorbed the `ApplyEffects`, `Delay` and `RootFields` confs and is green at job [1f1b7f90](https://prover.certora.com/output/950385/1f1b7f90049a4fff95ffbd613c1cee44?anonymousKey=a8dd7156e2490725567a23113d31dcb96b84f538), 5 rules and 95 leaves, every leaf SUCCESS, which is the job its rows cite.
 
