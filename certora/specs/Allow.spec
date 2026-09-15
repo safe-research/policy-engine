@@ -42,3 +42,19 @@ rule R_ALLOW_1_anyCalldata(env e, calldataarg args) {
         "AllowPolicy.checkTransaction answers MAGIC or reverts, for every raw calldata";
 }
 
+// W-ALLOW-1: a `checkTransaction` returning MAGIC with value > 0, data.length >= 4 and module != 0, so R-ALLOW-1's
+// success branch is not vacuous.
+rule W_ALLOW_1(
+    env e,
+    address safe,
+    address to,
+    uint256 value,
+    bytes data,
+    AllowPolicy.Operation op,
+    address module,
+    bytes context,
+    AccessSelector.T access
+) {
+    bytes4 r = checkTransaction(e, safe, to, value, data, op, module, context, access);
+    satisfy r == MAGIC() && value > 0 && data.length >= 4 && module != 0;
+}
