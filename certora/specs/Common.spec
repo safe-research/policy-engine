@@ -18,6 +18,16 @@ definition MAGIC() returns bytes4 = to_bytes4(
 // `IPolicy.configure`, the one policy-decoded selector declared here.
 definition SEL_CONFIGURE() returns bytes4 = to_bytes4(0xda0b9a55);
 
+// `_decodeSelector` reverts `InvalidSelector` for 1-3 bytes (PolicyEngine.sol:247-255).
+// badLen is declared in Vocabulary.spec.
+
+// `CALL`/`DELEGATECALL` are reserved CVL tokens, so the two {Operation} values are read through
+// LibHarness; the packed access-selector word is not, CVL modelling `AccessSelector.T` as its
+// underlying `uint256`, so `==` on the type and `to_mathint` on it are the raw readers.
+
+definition checkingSafe() returns address = currentContract.$checkingSafe;
+definition checkingModule() returns address = currentContract.$checkingModule;
+
 // D-007: the sentinels and the UDVT-keyed policy mapping are private (PolicyEngine.sol:24,35,46), so they are read by
 // direct storage access.
 definition policyAt(address safe, AccessSelector.T key) returns address = currentContract.$policies[safe][key];
