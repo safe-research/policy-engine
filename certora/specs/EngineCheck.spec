@@ -522,6 +522,72 @@ rule R_EC_6_invocation(env e, address to, uint256 value, bytes data,
         "the module path forwards an empty context (SafePolicyGuard.sol:256)";
 }
 
+// R-EC-7: the top-level policy invocation of an owner-path check gets the hook's own (to, value, data, op), safe ==
+// msg.sender, module == 0 and the resolved access and callee.
+rule R_EC_7(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+            uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+            address refundReceiver, bytes signatures, address msgSender) {
+    resetFrame();
+    require e.msg.sender != 0;
+    pinNonReentrantMock();
+    require mockPolicy.calls() == 0;
+    address s = e.msg.sender;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+    address p = mockPolicy;
+    checkTransaction(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken,
+        refundReceiver, signatures, msgSender);
+    assert mockPolicy.calls() == 1, "the policy is invoked exactly once";
+    assert mockPolicy.invSender(0) == currentContract, "the engine is the caller";
+    assert mockPolicy.invSafe(0) == s, "safe == the Safe that called the hook";
+    assert mockPolicy.invModule(0) == 0, "an owner transaction has no authorizing module";
+    assert mockPolicy.invTo(0) == to && mockPolicy.invValue(0) == value
+        && mockPolicy.invOperation(0) == op, "(to, value, operation) are the hook's own";
+    assert mockPolicy.invDataHash(0) == keccak(data) && mockPolicy.invDataLength(0) == data.length,
+        "data is forwarded unaltered";
+    assert mockPolicy.invAccess(0) == k, "access == resolve(...).access, exact or fallback as resolved";
+    assert gCalls == 1 && gCalled[p], "the callee is the resolved policy";
+}
+
+// R-EC-7, the module-path twin: module comes from state, not from the caller.
+rule R_EC_7_module(env e, address to, uint256 value, bytes data,
+                   SafePolicyGuardHarness.Operation op, address module) {
+    resetFrame();
+    require e.msg.sender != 0;
+    pinNonReentrantMock();
+    require mockPolicy.calls() == 0;
+    address s = e.msg.sender;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+    checkModuleTransaction(e, to, value, data, op, module);
+    assert mockPolicy.calls() == 1, "the policy is invoked exactly once";
+    assert mockPolicy.invSafe(0) == s && mockPolicy.invModule(0) == module,
+        "safe and module are the hook's own, taken from state";
+    assert mockPolicy.invTo(0) == to && mockPolicy.invValue(0) == value
+        && mockPolicy.invOperation(0) == op, "(to, value, operation) are the hook's own";
+    assert mockPolicy.invDataHash(0) == keccak(data) && mockPolicy.invDataLength(0) == data.length,
+        "data is forwarded unaltered";
+    assert mockPolicy.invAccess(0) == k, "access == resolve(...).access";
+}
+
+// R-EC-8: on the owner path the top-level policy's context is payload(signatures) when the envelope is present and
+// empty otherwise, read through the Lib reader set.
+rule R_EC_8_owner(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+                  uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+                  address refundReceiver, bytes signatures, address msgSender) {
+    require e.msg.sender != 0;
+    pinNonReentrantMock();
+    require mockPolicy.calls() == 0;
+    address s = e.msg.sender;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+    bool hasEnv = lib.has(signatures, CONTEXT_TYPE_HASH());
+    checkTransaction(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken,
+        refundReceiver, signatures, msgSender);
+    assert hasEnv => (mockPolicy.invContextLength(0) == lib.payloadLength(signatures, CONTEXT_TYPE_HASH())
+        && mockPolicy.invContextHash(0) == lib.payloadHash(signatures, CONTEXT_TYPE_HASH())),
+        "context == payload(signatures) when the envelope is present";
+    assert !hasEnv => mockPolicy.invContextLength(0) == 0,
+        "context is empty when no envelope is present";
+}
+
 // R-EC-14: the guard performs no DELEGATECALL anywhere.
 rule R_EC_14_noDelegateCall(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c)
     filtered { f -> !f.isView && !f.isPure }
@@ -639,3 +705,35 @@ rule R_EC_17_module(env e, uint256 value, bytes data, SafePolicyGuardHarness.Ope
     assert gCalls == 0, "and denies it before any policy is called, so no module can be forged onto one";
 }
 
+// W-EC-1(g): the mid-check state is reached through the hook, which discharges the require S != 0 of R-EC-1/3/4
+// (L-EC-9).
+rule W_EC_1_g(env e, address to, uint256 value, bytes data,
+              SafePolicyGuardHarness.Operation op, address module) {
+    require e.msg.sender != 0;
+    require checkingSafe() == 0;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REENTER_ENGINE;
+    require mockPolicy.depth() == 0 && mockPolicy.reenterSafe() == e.msg.sender;
+    AccessSelector.T k; address p;
+    k, p = getPolicy(e.msg.sender, to, data, op);
+    require p == mockPolicy;
+    checkModuleTransaction(e, to, value, data, op, module);
+    satisfy mockPolicy.innerCalled() && !mockPolicy.innerReverted() && module != 0;
+}
+
+// W-EC-1(j): a nested engine call targeting the hatch is refused from state when the top-level check is
+// module-authorised.
+rule W_EC_1_j(env e, address to, uint256 value, bytes data,
+              SafePolicyGuardHarness.Operation op, address module) {
+    require e.msg.sender != 0;
+    require module != 0;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REENTER_ENGINE;
+    require mockPolicy.depth() == 0 && mockPolicy.reenterSafe() == e.msg.sender;
+    require mockPolicy.reenterTo() == currentContract && mockPolicy.reenterValue() == 0
+        && mockPolicy.reenterOperation() == lib.opCall();
+    AccessSelector.T k; address p;
+    k, p = getPolicy(e.msg.sender, to, data, op);
+    require p == mockPolicy;
+    checkModuleTransaction(e, to, value, data, op, module);
+    satisfy mockPolicy.innerCalled() && mockPolicy.innerReverted()
+        && mockPolicy.innerErrorSelector() == errModuleConfigurationDenied();
+}

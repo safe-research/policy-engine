@@ -35,6 +35,8 @@ definition errAccessDenied() returns bytes4 = to_bytes4(0x0504a20d);
 // `cast sig "PolicyReverted(address,bytes)"` (PolicyEngine.sol:89).
 definition errPolicyReverted() returns bytes4 = to_bytes4(0xcaa49c33);
 */
+// `cast sig "ModuleConfigurationDenied()"` (PolicyEngine.sol:71).
+definition errModuleConfigurationDenied() returns bytes4 = to_bytes4(0x484086e0);
 // `cast sig "GuardTargetDenied()"` (PolicyEngine.sol:99).
 definition errGuardTargetDenied() returns bytes4 = to_bytes4(0x7bd59088);
 
