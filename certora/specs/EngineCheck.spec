@@ -431,6 +431,54 @@ rule R_EC_6_invocation(env e, address to, uint256 value, bytes data,
         "the module path forwards an empty context (SafePolicyGuard.sol:256)";
 }
 
+// R-EC-14: during a check every outgoing CALL the guard makes is IPolicy.checkTransaction with no value to the policy
+// resolved for that invocation.
+rule R_EC_14(env e, address to, uint256 value, bytes data,
+             SafePolicyGuardHarness.Operation op, address module) {
+    resetFrame();
+    require e.msg.sender != 0;
+    pinNonReentrantMock();
+    bool allowedC = allowedCalls@withrevert(to, value, data, op);
+    AccessSelector.T k; address p;
+    k, p = getPolicy@withrevert(e.msg.sender, to, data, op);
+    require inScene(p);
+    checkModuleTransaction(e, to, value, data, op, module);
+    assert gDelegateCalls == 0, "no DELEGATECALL on the check path";
+    assert gValueCalls == 0, "no value is forwarded to a policy";
+    assert gOtherSelectorCalls == 0, "every outgoing CALL is IPolicy.checkTransaction (0xcbd11d55)";
+    assert gCheckCalls == (allowedC ? 0 : 1), "exactly one policy call per non-hatch invocation, none on the hatch";
+    assert forall address a. gCalled[a] => a == p, "the only callee is the resolved policy";
+    assert gStatics == 0, "the check path reads no Safe storage";
+}
+
+// R-EC-15: two owner-path hook calls from the same storage differing only in baseGas, gasToken, refundReceiver and
+// msgSender have the same outcome and leave the same storage; the fifth class of the row, the pre-envelope bytes of
+// signatures, is un-attempted (R-EC-15).
+rule R_EC_15(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+             uint256 safeTxGas, uint256 gasPrice, bytes signatures,
+             uint256 baseGasA, address gasTokenA, address refundA, address senderA,
+             uint256 baseGasB, address gasTokenB, address refundB, address senderB) {
+    pinNonReentrantMock();
+    require op == lib.opCall() || op == lib.opDelegateCall();
+    AccessSelector.T k; address p;
+    k, p = getPolicy@withrevert(e.msg.sender, to, data, op);
+    require inScene(p);
+    // L-W0-2 is load-bearing here: under the NONDET default the two calls of this hyperproperty would answer with
+    // independent free bytes4 values.
+    storage init = lastStorage;
+    checkTransaction@withrevert(e, to, value, data, op, safeTxGas, baseGasA, gasPrice, gasTokenA, refundA,
+        signatures, senderA);
+    bool revA = lastReverted;
+    address sA = checkingSafe();
+    address mA = checkingModule();
+    checkTransaction@withrevert(e, to, value, data, op, safeTxGas, baseGasB, gasPrice, gasTokenB, refundB,
+        signatures, senderB) at init;
+    bool revB = lastReverted;
+    assert revA == revB, "baseGas / gasToken / refundReceiver / msgSender never change the verdict";
+    assert checkingSafe() == sA && checkingModule() == mA,
+        "... nor either sentinel (msgSender is never authorised on; the root README's trust-of-check-inputs note, B-4)";
+}
+
 // R-EC-17, the Safe transaction-guard hook: the denial reaches the owner path and no policy runs.
 rule R_EC_17_owner(env e, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
                    uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
