@@ -8,6 +8,7 @@ import {
   createSafe,
   enableGuard,
   encodeAllowlistConfig,
+  encodeAllowlistEntries,
   Permission,
   execTransaction,
   randomAddress,
@@ -448,6 +449,101 @@ describe('ERC20ApprovePolicy', function () {
           data: token.interface.encodeFunctionData('approve', [spender, 0])
         })
       ).to.not.emit(erc20ApprovePolicy, 'SpenderPermissionUsed')
+    })
+  })
+
+  describe('Calldata Decoding', function () {
+    // The policy reads the spender and amount straight out of the transaction's calldata, so what
+    // it accepts is exactly what the ABI decoder accepts -- including for a zero-amount approval,
+    // which bypasses the allowlist but is still decoded first.
+    it('Should decode approve calldata exactly, rejecting short or non-canonical words', async function () {
+      const { safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const [deployer] = await ethers.getSigners()
+      const accessSelector = await (await ethers.getContractFactory('TestAccessSelector')).deploy()
+      const approve = token.interface.getFunction('approve').selector
+      const tokenAddress = await token.getAddress()
+      const access = await accessSelector.create(tokenAddress, approve, SafeOperation.Call)
+      const spender = randomAddress()
+
+      const check = (data: string) =>
+        erc20ApprovePolicy
+          .connect(deployer)
+          .checkTransaction.staticCall(safe, tokenAddress, 0n, data, SafeOperation.Call, ZeroAddress, '0x', access)
+      const magicValue = erc20ApprovePolicy.interface.getFunction('checkTransaction').selector
+      const word = (value: string) => ethers.zeroPadValue(value, 32)
+      const zero = ethers.ZeroHash
+
+      // Nothing is configured here, so the zero-amount approval is the one that clears.
+      expect(await check(ethers.concat([approve, word(spender), zero]))).to.equal(magicValue)
+      await expect(
+        check(ethers.concat([approve, word(spender), ethers.zeroPadValue('0x01', 32)]))
+      ).to.be.revertedWithCustomError(erc20ApprovePolicy, 'Unauthorized')
+
+      // A spender word whose high bits are not clear is rejected by the decoder, before the
+      // zero-amount branch can wave it through.
+      const dirty = ethers.concat(['0xffffffffffffffffffffffff', spender])
+      await expect(check(ethers.concat([approve, dirty, zero]))).to.be.revertedWithoutReason()
+
+      // The selector is right but the arguments are not there.
+      await expect(check(approve)).to.be.revertedWithoutReason()
+    })
+  })
+
+  describe('Multi-Entry Configuration', function () {
+    it('Should write every entry of a spender list, with its own permission', async function () {
+      const { safe, erc20ApprovePolicy, token } = await loadFixture(fixture)
+
+      const [deployer] = await ethers.getSigners()
+      const accessSelector = await (await ethers.getContractFactory('TestAccessSelector')).deploy()
+      const tokenAddress = await token.getAddress()
+      const access = await accessSelector.create(
+        tokenAddress,
+        token.interface.getFunction('approve').selector,
+        SafeOperation.Call
+      )
+      const safeAddress = await safe.getAddress()
+      const account = (i: number) => ethers.getAddress(`0x${i.toString(16).padStart(2, '0').repeat(20)}`)
+      const permissions = [Permission.Always, Permission.Once, Permission.None]
+      const entries = (count: number) =>
+        Array.from({ length: count }, (_, i) => ({ account: account(i + 1), permission: permissions[i % 3] }))
+      const untouched = account(0xee)
+
+      // Lists long enough that a loop stopping early, or reusing one entry's permission for the
+      // rest, would show up.
+      for (const count of [2, 3, 4, 5, 20]) {
+        const list = entries(count)
+        const data = encodeAllowlistEntries(list)
+        expect(await erc20ApprovePolicy.connect(deployer).configure.staticCall(safeAddress, access, data)).to.equal(
+          true
+        )
+        await erc20ApprovePolicy.connect(deployer).configure(safeAddress, access, data)
+
+        for (const { account: spender, permission } of list) {
+          expect(await erc20ApprovePolicy.getSpenderPermission(deployer, safeAddress, tokenAddress, spender)).to.equal(
+            permission
+          )
+        }
+        // Configuring is additive: a spender the list never names keeps whatever it had.
+        expect(await erc20ApprovePolicy.getSpenderPermission(deployer, safeAddress, tokenAddress, untouched)).to.equal(
+          Permission.None
+        )
+      }
+
+      // A repeated account is written twice, so the last entry is the one that stands.
+      const repeated = account(0x77)
+      await erc20ApprovePolicy.connect(deployer).configure(
+        safeAddress,
+        access,
+        encodeAllowlistEntries([
+          { account: repeated, permission: Permission.Once },
+          { account: account(0x88), permission: Permission.Once },
+          { account: repeated, permission: Permission.Always }
+        ])
+      )
+      expect(await erc20ApprovePolicy.getSpenderPermission(deployer, safeAddress, tokenAddress, repeated)).to.equal(
+        Permission.Always
+      )
     })
   })
 })
