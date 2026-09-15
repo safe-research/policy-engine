@@ -118,6 +118,27 @@ definition expiredOrPanics(uint256 t, uint256 v) returns bool = expired(t, v) ||
 definition inScene(address p) returns bool =
     p == 0 || p == allow || p == deny || p == oneTimeAllow || p == mockPolicy;
 
+// Check-path entry points; checkAfterExecution and checkAfterModuleExecution drop out under !f.isPure.
+definition isCheckPath(method f) returns bool =
+    f.selector == sig:checkTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,uint256,uint256,uint256,address,address,bytes,address).selector
+    || f.selector == sig:checkModuleTransaction(address,uint256,bytes,SafePolicyGuardHarness.Operation,address).selector
+    || f.selector == sig:checkTransaction(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,bytes).selector
+    || f.selector == sig:tryCheck(address,address,uint256,bytes,SafePolicyGuardHarness.Operation,bytes).selector;
+
+// The four configuration entry points; with isCheckPath they partition the non-view, non-pure methods.
+definition isConfigPath(method f) returns bool =
+    f.selector == sig:configureImmediately(SafePolicyGuard.Configuration[]).selector
+    || f.selector == sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector
+    || f.selector == sig:requestConfiguration(bytes32).selector
+    || f.selector == sig:invalidateRoot(bytes32).selector;
+
+definition isApplySel(method f) returns bool =
+    f.selector == sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector;
+definition isImmediateSel(method f) returns bool =
+    f.selector == sig:configureImmediately(SafePolicyGuard.Configuration[]).selector;
+definition isRequestSel(method f) returns bool = f.selector == sig:requestConfiguration(bytes32).selector;
+definition isInvalidateSel(method f) returns bool = f.selector == sig:invalidateRoot(bytes32).selector;
+
 // configure verdict of entry i in the scene: Allow and Deny accept; OneTimeAllow reverts iff data.length < 32 or word0
 // > 1; MockPolicyHarness follows configureMode; policy == 0 makes no call.
 function entryOk(SafePolicyGuard.Configuration[] c, uint256 i) returns bool {
@@ -187,6 +208,100 @@ function calleesAreArrayPolicies(SafePolicyGuard.Configuration[] c, address x) r
     if (n > 1) { if (configPolicy(c, 1) == x && x != 0) { ok = true; } }
     if (n > 2) { if (configPolicy(c, 2) == x && x != 0) { ok = true; } }
     return ok;
+}
+
+
+// R-CFG-2: every $policies or rootConfigured namespace that f writes lies in {sender} u C_f, and the check path writes
+// neither.
+// The applyConfiguration instance is filtered out: it has no SUCCESS verdict on certora-cli 8.19.1.
+rule R_CFG_2(env e, method f, calldataarg args, SafePolicyGuard.Configuration[] c,
+             address x, AccessSelector.T k, bytes32 r)
+    filtered { f -> !f.isView && !f.isPure && isConfigPath(f)
+        && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+{
+    resetFrame();
+    address pol0 = policyAt(x, k);
+    uint256 root0 = rootConfigured(x, r);
+
+    if (isApplySel(f)) {
+        require c.length <= 3;
+        applyConfiguration(e, c);
+    } else if (isImmediateSel(f)) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+
+    bool wrotePolicy = policyAt(x, k) != pol0;
+    bool wroteRoot = rootConfigured(x, r) != root0;
+
+    assert wrotePolicy => (x == e.msg.sender || gCalled[x]),
+        "a $policies namespace that changed is the sender's or a callee's";
+    assert wroteRoot => (x == e.msg.sender || gCalled[x]),
+        "a rootConfigured namespace that changed is the sender's or a callee's";
+    assert (wrotePolicy && x == e.msg.sender) => (isImmediateSel(f) || isApplySel(f) || gCalled[x]),
+        "$policies[S][.] changes only via configureImmediately/applyConfiguration or a re-entrant callee";
+    assert isCheckPath(f) => ((wrotePolicy || wroteRoot) => gCalled[x]),
+        "on the check path the guard's own code writes neither mapping in any namespace";
+    assert (isRequestSel(f) || isInvalidateSel(f)) => !gCalled[x],
+        "requestConfiguration/invalidateRoot make no outgoing call (C_f is empty)";
+}
+
+// R-CFG-3: only the sender's own request or invalidate, an apply inside the window, or a callee moves
+// rootConfigured[s][r]. Under #101 clause (ii) carries the window's upper end, and clause (iii) admits one
+// transition with no callee: requestConfiguration overwrites an expired entry in place
+// (SafePolicyGuard.sol:365) with no outgoing call. That transition is named instead of excluded, so the
+// clause admits nothing else.
+// The applyConfiguration instance is filtered out: it has no SUCCESS verdict on certora-cli 8.19.1.
+rule R_CFG_3(env e, method f, calldataarg args, bytes32 root, SafePolicyGuard.Configuration[] c,
+             address s, bytes32 r)
+    filtered { f -> !f.isView && !f.isPure && isConfigPath(f)
+        && f.selector != sig:applyConfiguration(SafePolicyGuard.Configuration[]).selector }
+{
+    resetFrame();
+    uint256 v0 = rootConfigured(s, r);
+
+    bool isRequest = false;
+    bool isInvalidate = false;
+    bool isApply = false;
+    if (isRequestSel(f)) {
+        isRequest = true;
+        requestConfiguration(e, root);
+    } else if (isInvalidateSel(f)) {
+        isInvalidate = true;
+        invalidateRoot(e, root);
+    } else if (isApplySel(f)) {
+        isApply = true;
+        require c.length <= 3;
+        applyConfiguration(e, c);
+    } else if (isImmediateSel(f)) {
+        require c.length <= 3;
+        configureImmediately(e, c);
+    } else {
+        f(e, args);
+    }
+
+    uint256 v1 = rootConfigured(s, r);
+
+    assert (v0 == 0 && v1 != 0) =>
+        (to_mathint(v1) == e.block.timestamp + DELAY()
+         && ((s == e.msg.sender && isRequest && root == r) || gCalled[s])),
+        "(i) UNSET -> PENDING is T + DELAY, by the sender's requestConfiguration(r) or by a callee";
+    assert (v0 != 0 && v1 == 0) =>
+        ((s == e.msg.sender
+          && ((isInvalidate && root == r)
+              || (isApply && configurationRoot(c) == r && e.block.timestamp >= v0
+                  && !expired(e.block.timestamp, v0))))
+         || gCalled[s]),
+        "(ii) PENDING -> UNSET only by invalidateRoot(r) or an in-window applyConfiguration of that root, or by a callee";
+    assert (v0 != 0 && v1 != 0 && !gCalled[s]) =>
+        (v1 == v0
+         || (s == e.msg.sender && isRequest && root == r && expired(e.block.timestamp, v0)
+             && to_mathint(v1) == e.block.timestamp + DELAY())),
+        "(iii) with no callee a namespace moves only by the sender re-requesting its own expired root, to T + DELAY";
+    assert (v0 != 0 && v1 != 0 && gCalled[s] && v1 != v0) => to_mathint(v1) == e.block.timestamp + DELAY(),
+        "(iii) a called namespace can only refresh its own root to T + DELAY";
 }
 
 // R-CFG-4: requestConfiguration(r) reverts iff paid, pending inside its window, or overflowing, and otherwise
