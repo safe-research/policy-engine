@@ -2,7 +2,7 @@
  * Same subject and bounds; five rules re-prove R-MS-4..7's content with the engine callback resolved by a
  * DISPATCH list onto `EngineRecorderHarness`, a real contract that records what a real EVM CALL delivered
  * and reverts on a Solidity `require`. No twin for R-MS-1, R-MS-2, R-MS-3, R-MS-8 or the decoder rules; out
- * of scope are R-EC-7, R-EC-9, nested batches and WAIVED-H-7. File-wide: L-MS-6, the bounds L-MS-2 and L-MS-4, and
+ * of scope are R-EC-7, R-EC-9, R-MS-9 and WAIVED-H-7. File-wide: L-MS-6, the bounds L-MS-2 and L-MS-4, and
  * defect L-POL-CTX: the four `assert` rules here each take two free CVL `bytes` (`data`, `context`) and make a
  * call, the shape that under the conf's `precise_bitwise_ops: true` silently drops every input pair with
  * exactly one empty buffer (L-POL-CTX). No companion rule ships here; the audit L-POL-CTX-M probed

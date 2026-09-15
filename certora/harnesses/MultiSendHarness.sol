@@ -8,8 +8,8 @@ import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {AccessSelector} from "../../contracts/libraries/AccessSelector.sol";
 
 /**
- * @notice Contracts for the MultiSend unit: an additive subclass of {MultiSendPolicy} exposing
- *         its real internal decoders and a recording engine callee; the recording leaf policy is commented out.
+ * @notice Three contracts for the MultiSend unit: an additive subclass of {MultiSendPolicy} exposing
+ *         its real internal decoders, a recording engine callee, and a recording leaf policy.
  * @dev The walkers call the same inherited decoders as the subject, so R_MS_3_headDecoder,
  *      R_MS_5_itemDecoder and R_MS_6_ctxDecoder state each decoder against LibHarness byte readers.
  */
@@ -155,38 +155,37 @@ contract EngineRecorderHarness {
     }
 }
 
-// Commented out with the rule that used it.
-// /**
-//  * @notice Leaf policy for the nested scene, counting every invocation (conf/MultiSendNested.conf).
-//  * @dev With the engine in the scene nothing is summarized, so the observation that a sub-transaction
-//  *      of a nested batch reached a policy of its own cannot be made with ghosts (R-MS-9).
-//  */
-// contract RecorderPolicyHarness is IPolicy {
-//     /// @notice The count is the whole observation R-MS-9 makes of this leaf; nothing reads a recorded field,
-//     ///         so no per-call mapping is kept.
-//     uint256 public calls;
-//
-//     /// @notice Free oracle: arbitrary initial storage means the leaf may accept or deny.
-//     bool public accept;
-//
-//     error RecorderPolicyDenied();
-//
-//     function checkTransaction(
-//         address,
-//         address,
-//         uint256,
-//         bytes calldata,
-//         Operation,
-//         address,
-//         bytes calldata,
-//         AccessSelector.T
-//     ) external override returns (bytes4) {
-//         calls = calls + 1;
-//         require(accept, RecorderPolicyDenied());
-//         return IPolicy.checkTransaction.selector;
-//     }
-//
-//     function configure(address, AccessSelector.T, bytes memory) external pure override returns (bool) {
-//         return true;
-//     }
-// }
+/**
+ * @notice Leaf policy for the nested scene, counting every invocation (conf/MultiSendNested.conf).
+ * @dev With the engine in the scene nothing is summarized, so the observation that a sub-transaction
+ *      of a nested batch reached a policy of its own cannot be made with ghosts (R-MS-9).
+ */
+contract RecorderPolicyHarness is IPolicy {
+    /// @notice The count is the whole observation R-MS-9 makes of this leaf; nothing reads a recorded field,
+    ///         so no per-call mapping is kept.
+    uint256 public calls;
+
+    /// @notice Free oracle: arbitrary initial storage means the leaf may accept or deny.
+    bool public accept;
+
+    error RecorderPolicyDenied();
+
+    function checkTransaction(
+        address,
+        address,
+        uint256,
+        bytes calldata,
+        Operation,
+        address,
+        bytes calldata,
+        AccessSelector.T
+    ) external override returns (bytes4) {
+        calls = calls + 1;
+        require(accept, RecorderPolicyDenied());
+        return IPolicy.checkTransaction.selector;
+    }
+
+    function configure(address, AccessSelector.T, bytes memory) external pure override returns (bool) {
+        return true;
+    }
+}

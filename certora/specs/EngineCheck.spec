@@ -375,8 +375,9 @@ rule R_EC_4c_wrongMagic(env e, address safe, address to, uint256 value, bytes da
         "GuardTargetDenied instead, the policy never being reached (#103)";
 }
 
-// R-EC-4(c): a reverting policy denies the transaction. The PolicyReverted class and the forwarded revert data are
-// in the commented-out rule below.
+// R-EC-4(c): a reverting policy denies the transaction. R_EC_4c_revertClass below carries the PolicyReverted class
+// and the forwarded revert data, whose len >= 100 sits below the ABI size of PolicyReverted(address,bytes) for a
+// 36-byte reason and above AccessDenied's.
 rule R_EC_4c_revert(env e, address safe, address to, uint256 value, bytes data,
                     SafePolicyGuardHarness.Operation op, bytes ctx) {
     require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
@@ -386,12 +387,10 @@ rule R_EC_4c_revert(env e, address safe, address to, uint256 value, bytes data,
     require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REVERTS;
     bool ok; bytes4 sel; address arg; uint256 len; address r;
     ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
-    // The conjunction is split: the provable half stands here; the class half is commented out below.
+    // The conjunction is split: the provable half stands here and R_EC_4c_revertClass carries the class.
     assert !ok, "a reverting policy denies the transaction";
 }
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // R-EC-4(c), the classification half: the policy's own revert data is forwarded; blocked: the class is refuted while
 // the denial itself holds. Under #103 the forwarding claim speaks only for a target that is not the guard, and
 // the guard target gets its own class here rather than being dropped.
@@ -412,7 +411,6 @@ rule R_EC_4c_revertClass(env e, address safe, address to, uint256 value, bytes d
     assert to == currentContract => (!ok && sel == errGuardTargetDenied() && len == 4),
         "a guard-targeted call is denied before the policy runs, so its revert data is not what is forwarded (#103)";
 }
-*/
 
 // R-EC-5: the owner hook reverts iff it is paid, gas-priced, mid-check, malformed in signatures or data, aimed at the
 // guard off the hatch, or the resolved policy is absent or does not accept; on success S and M are 0. The
@@ -763,8 +761,8 @@ rule R_EC_14_noDelegateCall(env e, method f, calldataarg args, SafePolicyGuard.C
 }
 
 // R-EC-14 at the applyConfiguration node with n <= 1 (L-EC-LOOP-N1): the n <= 3 node of R_EC_14_noDelegateCall, once
-// a TIMEOUT on keccak over a symbolic array, is SUCCESS in EngineCheckDelegate.conf; the EngineConfig.spec rule that
-// states the claim at n <= 3 is commented out.
+// a TIMEOUT on keccak over a symbolic array, is SUCCESS in EngineCheckDelegate.conf, and EngineConfig's R_CFG_6d,
+// which states the claim at n <= 3, TIMEOUTs in EngineConfigCallFrame.conf.
 rule R_EC_14_noDelegateCall_apply1(env e, SafePolicyGuard.Configuration[] c) {
     resetFrame();
     require c.length <= 1;
@@ -925,8 +923,7 @@ rule W_EC_1_e(env e, address to, uint256 value, bytes data,
     satisfy !oneTimeAllow.isGranted(currentContract, s, k);
 }
 
-// W-EC-1(f): AccessDenied(0) and AccessDenied(p) are each reachable through tryCheck, starting with AccessDenied(0);
-// the PolicyReverted witness is commented out.
+// W-EC-1(f): the three denial classes are each reachable through tryCheck, starting with AccessDenied(0).
 rule W_EC_1_f_accessDeniedZero(env e, address safe, address to, uint256 value, bytes data,
                                SafePolicyGuardHarness.Operation op, bytes ctx) {
     require safe != 0 && checkingSafe() == safe && checkingModule() == 0;
@@ -944,8 +941,6 @@ rule W_EC_1_f_accessDeniedPolicy(env e, address safe, address to, uint256 value,
     satisfy !ok && sel == errAccessDenied() && arg == deny;
 }
 
-// Commented out: no SUCCESS verdict on certora-cli 8.19.1; the report's section 7 lists it.
-/*
 // W-EC-1(f), third class: `PolicyReverted(p, .)` for the mock in REVERTS mode is reachable through `tryCheck`.
 // The satisfy comes back unsatisfiable, an artefact of the summarized catch (D-008, L-EC-7) rather than a
 // statement about the deployed engine, which produces the selector on the first reverting policy.
@@ -958,7 +953,6 @@ rule W_EC_1_f_policyReverted(env e, address safe, address to, uint256 value, byt
     ok, sel, arg, len, r = tryCheck(e, safe, to, value, data, op, ctx);
     satisfy !ok && sel == errPolicyReverted() && arg == mockPolicy && len >= 100;
 }
-*/
 
 // W-EC-1(l), the fourth denial class: `GuardTargetDenied` for a call aimed at the guard
 // is reachable through `tryCheck`.

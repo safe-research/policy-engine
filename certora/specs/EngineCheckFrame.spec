@@ -131,7 +131,8 @@ rule EC_ConfigFrame(env e, method f, calldataarg args, SafePolicyGuard.Configura
 }
 
 // R-CFG-2 re-instantiated, the applyConfiguration node of EC_ConfigFrame at n <= 1; R_CFG_2_apply1 states that
-// node's first two asserts in the EngineConfig scene at n <= 1, and R_CFG_2 filters that node out.
+// node's first two asserts in the EngineConfig scene at n <= 1, and R_CFG_2's node at n <= 3 is UNKNOWN
+// (EngineConfigFrame.conf).
 rule EC_ConfigFrame_apply1(env e, SafePolicyGuard.Configuration[] c,
                            address x, AccessSelector.T k, bytes32 r) {
     require e.msg.sender != 0;

@@ -30,11 +30,8 @@ definition SEL_CONFIGURE() returns bytes4 = to_bytes4(0xda0b9a55);
 // ABI carries for that error.
 // `cast sig "AccessDenied(address)"` (PolicyEngine.sol:80).
 definition errAccessDenied() returns bytes4 = to_bytes4(0x0504a20d);
-// Commented out with the rule that used it.
-/*
 // `cast sig "PolicyReverted(address,bytes)"` (PolicyEngine.sol:89).
 definition errPolicyReverted() returns bytes4 = to_bytes4(0xcaa49c33);
-*/
 // `cast sig "ModuleConfigurationDenied()"` (PolicyEngine.sol:71).
 definition errModuleConfigurationDenied() returns bytes4 = to_bytes4(0x484086e0);
 // `cast sig "GuardTargetDenied()"` (PolicyEngine.sol:99).
@@ -116,8 +113,7 @@ methods {
     function mockPolicy.reenterRoot() external returns (bytes32) envfree;
     function mockPolicy.cfgTarget() external returns (address) envfree;
     function mockPolicy.cfgSelector() external returns (bytes4) envfree;
-    // Commented out with the rule that used it.
-    // function mockPolicy.cfgOperation() external returns (SafePolicyGuardHarness.Operation) envfree;
+    function mockPolicy.cfgOperation() external returns (SafePolicyGuardHarness.Operation) envfree;
     function mockPolicy.cfgPolicy() external returns (address) envfree;
     function mockPolicy.primedRoot() external returns (bytes32) envfree;
     function mockPolicy.depth() external returns (uint256) envfree;
