@@ -452,6 +452,23 @@ rule R_EC_5(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness
         => !rev, "the escape hatch never reverts on the owner path";
 }
 
+// R-EC-5, the outgoing-call clause: no policy runs on any pre-check revert branch, which the persistent counter
+// survives to observe.
+rule R_EC_5_noPolicyOnRevert(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+                             uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+                             address refundReceiver, bytes signatures, address msgSender) {
+    resetFrame();
+    require e.msg.sender != 0;
+    require op == lib.opCall() || op == lib.opDelegateCall();
+    address sPre = checkingSafe();
+    bool bad = badLen(data);
+    bool wf = wellFormedSig(signatures);
+    checkTransaction@withrevert(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken,
+        refundReceiver, signatures, msgSender);
+    assert (gasPrice != 0 || safeTxGas != 0 || sPre != 0 || !wf || bad) => gCalls == 0,
+        "gas checks and the envelope parse happen before any policy call (AC-6)";
+}
+
 // R-EC-5, the invocation-count clause on the success path: exactly one policy CALL iff the hatch was missed.
 rule R_EC_5_callCount(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
                       uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
@@ -499,6 +516,22 @@ rule R_EC_6(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness
     assert rev <=> expected, "module-path hook revert iff";
     assert !rev => r == to_bytes32(0), "the module hook returns bytes32(0)";
     assert !rev => (checkingSafe() == 0 && checkingModule() == 0), "sentinels restored on success";
+}
+
+// R-EC-6, the outgoing-call clause: no policy runs on any revert branch, the hatch-with-module one and #103's
+// guard-target one included.
+rule R_EC_6_noPolicyOnRevert(env e, address to, uint256 value, bytes data,
+                             SafePolicyGuardHarness.Operation op, address module) {
+    resetFrame();
+    require e.msg.sender != 0;
+    require op == lib.opCall() || op == lib.opDelegateCall();
+    address sPre = checkingSafe();
+    bool bad = badLen(data);
+    bool allowedC = allowedCalls@withrevert(to, value, data, op);
+    checkModuleTransaction@withrevert(e, to, value, data, op, module);
+    assert (sPre != 0 || bad || (!bad && allowedC && module != 0)
+            || (!bad && !allowedC && to == currentContract)) => gCalls == 0,
+        "the module hook's revert branches precede every policy call";
 }
 
 // R-EC-6, the invocation clause: exactly one policy CALL iff the hatch was missed, carrying the hook's own module and
@@ -568,6 +601,95 @@ rule R_EC_7_module(env e, address to, uint256 value, bytes data,
     assert mockPolicy.invAccess(0) == k, "access == resolve(...).access";
 }
 
+// R-EC-7, the nested clause a batching policy's composition depends on: a nested engine call a policy issues reaches
+// a policy with the top-level safe and module and its own resolved access.
+// #103 splits the claim in two rather than shrinking it. A nested call whose own target is the guard is denied
+// `GuardTargetDenied` at PolicyEngine.sol:194, before any policy is reached, so that branch asserts the denial and
+// the invocation claims speak for the rest. `resolvesTo` already places the nested call off the escape hatch, so
+// the guard as its target is exactly the denied case; no `require` was added, and the two branches partition the
+// same input set the rule carried before.
+rule R_EC_7_nested(env e, address to, uint256 value, bytes data,
+                   SafePolicyGuardHarness.Operation op, address module) {
+    resetFrame();
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REENTER_ENGINE;
+    require mockPolicy.depth() == 0 && mockPolicy.calls() == 0;
+    require mockPolicy.reenterSafe() == s;
+    require mockPolicy.reenterDataSkip() == 0;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+    AccessSelector.T k1 = resolvesTo(s, mockPolicy.reenterTo(), mockPolicy.reenterValue(), data,
+        mockPolicy.reenterOperation(), mockPolicy);
+    address p1 = mockPolicy;
+    bool guardTarget = mockPolicy.reenterTo() == currentContract;
+
+    checkModuleTransaction(e, to, value, data, op, module);
+
+    assert mockPolicy.innerCalled(), "the nested engine call is issued";
+    assert guardTarget => (mockPolicy.innerReverted() && mockPolicy.innerErrorSelector() == errGuardTargetDenied()
+        && mockPolicy.innerErrorLength() == 4),
+        "a nested call aimed at the guard is denied GuardTargetDenied, argument-free (#103)";
+    assert guardTarget => mockPolicy.calls() == 1, "the denied nested call reaches no policy at all (#103)";
+    assert !guardTarget => !mockPolicy.innerReverted(), "the nested same-Safe check is served";
+    assert !guardTarget => mockPolicy.calls() == 2, "the nested invocation is a second, distinct policy invocation";
+    assert !guardTarget => mockPolicy.invSafe(1) == s,
+        "the nested check runs for the Safe being checked, not one the policy names";
+    assert !guardTarget => mockPolicy.invModule(1) == module,
+        "the nested check carries the module from state - a policy cannot forge the authorization path";
+    assert !guardTarget => (mockPolicy.invTo(1) == mockPolicy.reenterTo()
+        && mockPolicy.invOperation(1) == mockPolicy.reenterOperation()),
+        "the nested (to, operation) are that engine call's own arguments";
+    assert !guardTarget => mockPolicy.invValue(1) == mockPolicy.reenterValue(),
+        "the nested value is that engine call's own free value, not the top-level one";
+    assert !guardTarget => mockPolicy.invAccess(1) == k1, "the nested access is resolved for the nested arguments";
+    assert !guardTarget => mockPolicy.innerReturnedPolicy() == p1,
+        "the nested callee is the policy resolved for the nested arguments";
+    assert !guardTarget => (mockPolicy.invDataHash(1) == keccak(data)
+        && mockPolicy.invDataLength(1) == data.length),
+        "the nested data reaches the nested policy unaltered";
+}
+
+// R-EC-7, the nested data limb at free reenterDataSkip: the nested length is asserted as a function of the skip, with
+// no access or callee claim, because CVL cannot name keccak(data[skip:]) for a symbolic skip (L-EC-12).
+rule R_EC_7_nested_data(env e, address to, uint256 value, bytes data,
+                        SafePolicyGuardHarness.Operation op, address module) {
+    resetFrame();
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REENTER_ENGINE;
+    require mockPolicy.depth() == 0 && mockPolicy.calls() == 0;
+    require mockPolicy.reenterSafe() == s;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+
+    checkModuleTransaction(e, to, value, data, op, module);
+
+    uint256 outer = mockPolicy.invDataLength(0);
+    uint256 skip = mockPolicy.reenterDataSkip();
+    assert mockPolicy.calls() == 2 => to_mathint(mockPolicy.invDataLength(1)) ==
+        (skip >= outer ? 0 : to_mathint(outer) - to_mathint(skip)),
+        "the nested data is the nested call's own argument, at every skip";
+    assert (mockPolicy.calls() == 2 && skip > 0 && outer > 0) => mockPolicy.invDataLength(1) != outer,
+        "a nested payload that differs from the top-level one really differs at the policy";
+}
+
+// W-EC-1(k): the antecedent of R_EC_7_nested_data is reachable at a non-zero skip over a non-empty payload.
+rule W_EC_1_k_nestedTailData(env e, address to, uint256 value, bytes data,
+                             SafePolicyGuardHarness.Operation op, address module) {
+    resetFrame();
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REENTER_ENGINE;
+    require mockPolicy.depth() == 0 && mockPolicy.calls() == 0;
+    require mockPolicy.reenterSafe() == s;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+
+    checkModuleTransaction(e, to, value, data, op, module);
+
+    satisfy mockPolicy.calls() == 2 && mockPolicy.reenterDataSkip() > 0
+        && mockPolicy.invDataLength(0) > 0
+        && mockPolicy.invDataLength(1) != mockPolicy.invDataLength(0);
+}
+
 // R-EC-8: on the owner path the top-level policy's context is payload(signatures) when the envelope is present and
 // empty otherwise, read through the Lib reader set.
 rule R_EC_8_owner(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
@@ -586,6 +708,41 @@ rule R_EC_8_owner(env e, address to, uint256 value, bytes data, SafePolicyGuardH
         "context == payload(signatures) when the envelope is present";
     assert !hasEnv => mockPolicy.invContextLength(0) == 0,
         "context is empty when no envelope is present";
+}
+
+// R-EC-8: a nested engine call gives the nested policy that call's own context, not the top-level one.
+// Split for #103 exactly as R_EC_7_nested is: a nested call aimed at the guard is denied `GuardTargetDenied` at
+// PolicyEngine.sol:194 before any policy sees a context, so that branch asserts the denial and the context claims
+// speak for the rest. No `require` was added; the branches partition the input set the rule already had.
+rule R_EC_8_nested(env e, address to, uint256 value, bytes data, SafePolicyGuardHarness.Operation op,
+                   uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken,
+                   address refundReceiver, bytes signatures, address msgSender) {
+    require e.msg.sender != 0;
+    address s = e.msg.sender;
+    require mockPolicy.checkMode() == MockPolicyHarness.CheckMode.REENTER_ENGINE;
+    require mockPolicy.depth() == 0 && mockPolicy.calls() == 0;
+    require mockPolicy.reenterSafe() == s && mockPolicy.reenterDataSkip() == 0;
+    AccessSelector.T k = resolvesTo(s, to, value, data, op, mockPolicy);
+    AccessSelector.T k1 = resolvesTo(s, mockPolicy.reenterTo(), mockPolicy.reenterValue(), data,
+        mockPolicy.reenterOperation(), mockPolicy);
+    bool guardTarget = mockPolicy.reenterTo() == currentContract;
+
+    checkTransaction(e, to, value, data, op, safeTxGas, baseGas, gasPrice, gasToken,
+        refundReceiver, signatures, msgSender);
+
+    assert mockPolicy.innerCalled(), "the nested engine call is issued";
+    assert guardTarget => (mockPolicy.innerReverted() && mockPolicy.innerErrorSelector() == errGuardTargetDenied()
+        && mockPolicy.innerErrorLength() == 4),
+        "a nested call aimed at the guard is denied before any policy sees a context (#103)";
+    assert guardTarget => mockPolicy.calls() == 1, "the denied nested call reaches no policy at all (#103)";
+    assert !guardTarget => !mockPolicy.innerReverted(), "the nested same-Safe check is served";
+    uint256 outer = mockPolicy.invContextLength(0);
+    uint256 skip = mockPolicy.reenterContextSkip();
+    assert !guardTarget => to_mathint(mockPolicy.invContextLength(1)) ==
+        (skip >= outer ? 0 : to_mathint(outer) - to_mathint(skip)),
+        "the nested context is the nested call's own argument";
+    assert (!guardTarget && skip > 0 && outer > 0) => mockPolicy.invContextLength(1) != outer,
+        "a nested context that differs from the top-level one really differs at the policy";
 }
 
 // R-EC-14: the guard performs no DELEGATECALL anywhere.
