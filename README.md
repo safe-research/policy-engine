@@ -91,7 +91,7 @@ A policy decides on the transaction tuple the guard hands it. In the cases below
 | [`DenyPolicy`](./contracts/policies/DenyPolicy.sol) | Refuses the access selector unconditionally. |
 | [`OneTimeAllowPolicy`](./contracts/policies/OneTimeAllowPolicy.sol) | Permits the access selector once, then denies until reconfigured. |
 | [`AllowedModulePolicy`](./contracts/policies/AllowedModulePolicy.sol) | Restricts the authorizing module to an allowlist. |
-| [`NativeTransferPolicy`](./contracts/policies/NativeTransferPolicy.sol) | Permits value-bearing `CALL`s and nothing else. |
+| [`NativeTransferPolicy`](./contracts/policies/NativeTransferPolicy.sol) | Permits plain native transfers and nothing else: a `CALL` with non-zero value and no calldata. |
 | [`ERC20TransferPolicy`](./contracts/policies/ERC20TransferPolicy.sol) | Restricts ERC-20 transfer recipients to an allowlist, open-ended or single-use. |
 | [`ERC20ApprovePolicy`](./contracts/policies/ERC20ApprovePolicy.sol) | Restricts ERC-20 approval spenders to an allowlist, open-ended or single-use. Revoking an allowance is always permitted. |
 | [`MultiSendPolicy`](./contracts/policies/MultiSendPolicy.sol) | Applies the Safe's policies to each sub-transaction of a `multiSend` batch. |
