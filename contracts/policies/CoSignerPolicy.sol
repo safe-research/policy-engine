@@ -89,12 +89,17 @@ contract CoSignerPolicy is IPolicy {
 
     /**
      * @notice Get the co-signer for a given Safe and access selector.
+     * @param policyGuard The policy guard address.
      * @param safe The address of the Safe.
      * @param access The access selector.
      * @return cosigner The address of the co-signer.
      */
-    function getCoSigner(address safe, AccessSelector.T access) external view returns (address cosigner) {
-        cosigner = $cosigners[msg.sender][safe][access];
+    function getCoSigner(
+        address policyGuard,
+        address safe,
+        AccessSelector.T access
+    ) external view returns (address cosigner) {
+        cosigner = $cosigners[policyGuard][safe][access];
     }
 
     /**
