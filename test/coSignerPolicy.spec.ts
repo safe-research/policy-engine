@@ -315,18 +315,29 @@ describe('CoSignerPolicy', function () {
   })
 
   describe('getCoSigner', function () {
-    it('Should report the co-signer configured for an access selector', async function () {
-      // State is namespaced by `msg.sender`, and `getCoSigner` reads that same namespace, so
-      // configuring directly is what makes the getter observable.
-      const { deployer, cosigner, recipient, safe, coSignerPolicy } = await loadFixture(fixture)
+    it("Should report the co-signer from the policy guard's configuration", async function () {
+      const { deployer, owner, cosigner, recipient, safePolicyGuard, safe, coSignerPolicy } = await loadFixture(fixture)
       const accessSelector = await (await ethers.getContractFactory('TestAccessSelector')).deploy()
       const access = await accessSelector.create(await recipient.getAddress(), '0x00000000', SafeOperation.Call)
 
-      expect(await coSignerPolicy.connect(deployer).getCoSigner(safe, access)).to.equal(ZeroAddress)
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: await recipient.getAddress(),
+            policy: await coSignerPolicy.getAddress(),
+            data: encodeCoSignerConfig(await cosigner.getAddress())
+          })
+        ]
+      })
 
-      await coSignerPolicy.connect(deployer).configure(safe, access, encodeCoSignerConfig(await cosigner.getAddress()))
-
-      expect(await coSignerPolicy.connect(deployer).getCoSigner(safe, access)).to.equal(await cosigner.getAddress())
+      // Queried by `deployer`, not the guard: the namespace comes from the argument.
+      expect(await coSignerPolicy.connect(deployer).getCoSigner(safePolicyGuard, safe, access)).to.equal(
+        await cosigner.getAddress()
+      )
+      expect(await coSignerPolicy.connect(deployer).getCoSigner(deployer, safe, access)).to.equal(ZeroAddress)
     })
   })
   describe('Co-Signature Replay', function () {
