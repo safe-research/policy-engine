@@ -37,8 +37,8 @@ export const CustomLink = ({
 export const SafeResearchBanner = () => {
   return (
     <Alert severity="warning">
-      This demo is an experimental beta release. Code is not audited. Use at
-      your own risk.
+      This demo is an experimental beta release. The app and the demo guard it
+      uses are not audited. Use at your own risk.
     </Alert>
   )
 }

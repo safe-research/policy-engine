@@ -1,3 +1,6 @@
+> [!WARNING]
+> This app and the demo guard it uses (`AppSafePolicyGuard`) are not audited. Use at your own risk. See the [audits](../README.md#audits) for what is.
+
 # Policy Engine Safe App
 
 A React-based Safe App that provides a user interface for managing policy-based access controls in Safe wallets using the Policy Engine protocol.

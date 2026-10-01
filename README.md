@@ -1,6 +1,3 @@
-> [!WARNING]
-> Code in this repository is not audited and may contain serious security holes. Use at your own risk.
-
 ![Policy Engine](./app/public/policy-engine.svg)
 
 # Safe{Policies}
@@ -218,4 +215,15 @@ entry points.
 
 It is recorded in `networks.json` on mainnets as well as testnets, but **those deployments are
 demonstrations and must not be used in production.** It lives under `contracts/test/`, carries no
-tests, and is outside the audited surface.
+tests, and is outside the [audited surface](#audits).
+
+## Audits
+
+Certora audited the contracts in two parts. [audits/audit.md](./audits/audit.md) has the scope, commits
+and findings of each.
+
+- [Policy engine core](./audits/audit.md#audit-1), August 2026
+- [Policies](./audits/audit.md#audit-2), September 2026
+
+Neither audit covered `OneTimeAllowPolicy`, the libraries vendored from Safenet (`ConsensusMessages`,
+`EpochRollover`, `FROST` and `Secp256k1`), anything under `contracts/test/`, or the Safe App in `app/`.
