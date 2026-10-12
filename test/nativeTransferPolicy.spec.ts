@@ -3,7 +3,14 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { createConfiguration, createSafe, enableGuard, execTransaction, SafeOperation } from '../src/utils'
+import {
+  createConfiguration,
+  createSafe,
+  enableGuard,
+  execTransaction,
+  randomAddress,
+  SafeOperation
+} from '../src/utils'
 import { deploySafeContracts, deploySafePolicyGuard, deployNativeTransferPolicy } from './deploy'
 
 describe('NativeTransferPolicy', function () {
@@ -126,6 +133,35 @@ describe('NativeTransferPolicy', function () {
         })
       ).to.be.revertedWithCustomError(safePolicyGuard, 'InvalidSelector')
     })
+
+    it('Should not allow a value-bearing call that carries calldata', async function () {
+      const { owner, recipient, safePolicyGuard, safe, nativeTransferPolicy } = await loadFixture(fixture)
+
+      const amount = ethers.parseEther('1')
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
+      })
+
+      // No policy matches this selector, so the engine routes the call to the fallback configuration.
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await recipient.getAddress(),
+          value: amount,
+          data: '0x12345678'
+        })
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await nativeTransferPolicy.getAddress(),
+          nativeTransferPolicy.interface.encodeErrorResult('CalldataNotPermitted', [])
+        )
+    })
   })
 
   describe('Policy Configuration', function () {
@@ -141,6 +177,26 @@ describe('NativeTransferPolicy', function () {
       ]
 
       // Configure the policy
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await safePolicyGuard.getAddress(),
+          data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
+        })
+      ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyConfigurationFailed')
+    })
+
+    it('Should not accept configuration data', async function () {
+      const { owner, safePolicyGuard, safe, nativeTransferPolicy } = await loadFixture(fixture)
+
+      const configurations = [
+        createConfiguration({
+          policy: await nativeTransferPolicy.getAddress(),
+          data: '0x1234'
+        })
+      ]
+
       await expect(
         execTransaction({
           owners: [owner],
@@ -171,6 +227,24 @@ describe('NativeTransferPolicy', function () {
           data: safePolicyGuard.interface.encodeFunctionData('configureImmediately', [configurations])
         })
       ).to.be.revertedWithCustomError(safePolicyGuard, 'PolicyConfigurationFailed')
+    })
+
+    it('Should reject a DELEGATECALL when called directly', async function () {
+      const { safe, nativeTransferPolicy } = await loadFixture(fixture)
+
+      // `configure` refuses the DELEGATECALL key, so only a direct call reaches this check.
+      await expect(
+        nativeTransferPolicy.checkTransaction(
+          safe,
+          randomAddress(),
+          1n,
+          '0x',
+          SafeOperation.DelegateCall,
+          ZeroAddress,
+          '0x',
+          0
+        )
+      ).to.be.revertedWithCustomError(nativeTransferPolicy, 'InvalidOperation')
     })
   })
 })
