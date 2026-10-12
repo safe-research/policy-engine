@@ -6,13 +6,12 @@ import {AccessSelector} from "../libraries/AccessSelector.sol";
 
 /**
  * @title Native Transfer Policy
- * @dev Allow native token transfers, and only those: a `CALL` carrying a non-zero value and no
- *      calldata.
+ * @dev Allow plain native token transfers: a `CALL` with non-zero value and no calldata.
  * @dev The recipient comes from the access selector this is configured under, so it must be
  *      configured per target. The CALL fallback key also satisfies {configure}, where it permits
- *      any amount to any address, `address(0)` included. Under that key the engine routes every
- *      call without a more specific policy here, including ones with calldata, so the policy
- *      re-checks the transaction shape instead of inferring it from the key it was reached by.
+ *      any amount to any address, `address(0)` included. The engine also routes calls with
+ *      calldata to that key when no more specific policy matches, so {checkTransaction} checks
+ *      the calldata and the operation.
  */
 contract NativeTransferPolicy is IPolicy {
     using AccessSelector for AccessSelector.T;
@@ -23,9 +22,9 @@ contract NativeTransferPolicy is IPolicy {
     error InvalidTransfer();
 
     /**
-     * @notice Error indicating the transaction carries calldata.
+     * @notice Error indicating the transaction carries calldata, which this policy never permits.
      */
-    error InvalidCalldata();
+    error CalldataNotPermitted();
 
     /**
      * @notice Error indicating the operation is invalid.
@@ -43,15 +42,15 @@ contract NativeTransferPolicy is IPolicy {
         AccessSelector.T
     ) external pure override returns (bytes4 magicValue) {
         require(operation == Operation.CALL, InvalidOperation());
-        require(data.length == 0, InvalidCalldata());
+        require(data.length == 0, CalldataNotPermitted());
         require(value > 0, InvalidTransfer());
         return IPolicy.checkTransaction.selector;
     }
 
     /**
      * @notice Configure the policy for native ETH transfer.
-     * @dev Takes no configuration data; non-empty data is rejected rather than ignored, so a
-     *      configuration that expects this policy to read it fails loudly.
+     * @dev The policy reads no configuration data, so it rejects non-empty data instead of
+     *      ignoring it.
      */
     function configure(address, AccessSelector.T access, bytes memory data) external pure override returns (bool) {
         return access.getSelector() == bytes4(0) && access.getOperation() == Operation.CALL && data.length == 0;

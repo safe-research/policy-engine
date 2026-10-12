@@ -139,7 +139,6 @@ describe('NativeTransferPolicy', function () {
 
       const amount = ethers.parseEther('1')
 
-      // Configure the native transfer policy as the fallback, then enable the guard
       await enableGuard({
         owners: [owner],
         safe,
@@ -147,9 +146,7 @@ describe('NativeTransferPolicy', function () {
         configurations: [createConfiguration({ policy: await nativeTransferPolicy.getAddress() })]
       })
 
-      // Calldata with a full selector resolves to no specific policy, so the engine routes it to
-      // the fallback configuration. Without the calldata check, the policy would allow any call
-      // that happens to carry value.
+      // No policy matches this selector, so the engine routes the call to the fallback configuration.
       await expect(
         execTransaction({
           owners: [owner],
@@ -162,7 +159,7 @@ describe('NativeTransferPolicy', function () {
         .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
         .withArgs(
           await nativeTransferPolicy.getAddress(),
-          nativeTransferPolicy.interface.encodeErrorResult('InvalidCalldata', [])
+          nativeTransferPolicy.interface.encodeErrorResult('CalldataNotPermitted', [])
         )
     })
   })
@@ -193,8 +190,6 @@ describe('NativeTransferPolicy', function () {
     it('Should not accept configuration data', async function () {
       const { owner, safePolicyGuard, safe, nativeTransferPolicy } = await loadFixture(fixture)
 
-      // The policy reads no configuration data, so it rejects it rather than silently ignoring a
-      // configuration that was written expecting it to be enforced.
       const configurations = [
         createConfiguration({
           policy: await nativeTransferPolicy.getAddress(),
@@ -237,8 +232,7 @@ describe('NativeTransferPolicy', function () {
     it('Should reject a DELEGATECALL when called directly', async function () {
       const { safe, nativeTransferPolicy } = await loadFixture(fixture)
 
-      // `configure` already refuses the DELEGATECALL key, so the engine cannot route one here.
-      // This is the policy defending itself against a caller that does anyway, which anyone may be.
+      // `configure` refuses the DELEGATECALL key, so only a direct call reaches this check.
       await expect(
         nativeTransferPolicy.checkTransaction(
           safe,
