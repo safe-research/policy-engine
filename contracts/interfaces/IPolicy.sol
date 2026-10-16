@@ -32,6 +32,9 @@ interface IPolicy {
      *      3. Key state by `msg.sender` (the calling engine/guard) and treat `safe` as untrusted
      *         input — i.e. namespace storage as `(msg.sender, safe)` — to avoid cross-guard interference.
      *      4. Follow checks-effects-interactions and bound gas/storage growth.
+     *      5. Do not take selector `0x00000000` to mean empty calldata: calldata starting with four
+     *         zero bytes decodes to it too. A policy meant for plain transfers must require
+     *         `data.length == 0`.
      */
     function checkTransaction(
         address safe,
