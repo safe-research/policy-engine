@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity ^0.8.30;
-// Vendored from `safe-research/safenet` at `5de7e86900b27844d00458d8dc85cbaa0d27f2ea`,
+// Vendored from `safe-research/safenet` at `4ed51011b4ff2dbc2a406b7366ef311725ac5938`,
 // `contracts/src/libraries/Secp256k1.sol`. Only the licence header and the `@/libraries/`
 // import alias differ; `npm run vendor:check` enforces that.
 
 /**
  * @title Secp256k1
  * @notice Secp256k1 curve operations.
+ * @dev This library requires the `MODEXP (0x05)` precompile (EIP-198).
  */
 library Secp256k1 {
     // ============================================================
@@ -33,6 +34,13 @@ library Secp256k1 {
     error NotOnCurve();
 
     /**
+     * @notice Thrown when `mulmuladd` is used with unsupported, but otherwise valid, inputs.
+     * @dev The `ecrecover` trick used by `mulmuladd` has some additional requirements on its inputs
+     *      that must be satisfied. See the `mulmuladd` documentation for more information.
+     */
+    error UnsupportedMulMulAddInput();
+
+    /**
      * @notice Thrown when the witness for mulmuladd is invalid.
      */
     error InvalidMulMulAddWitness();
@@ -57,7 +65,7 @@ library Secp256k1 {
 
     /**
      * @notice The order of the generator point of the secp256k1 curve.
-     * @dev All scalar arithmetic are performed modulo N.
+     * @dev All scalar arithmetic is performed modulo N.
      */
     uint256 internal constant N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141;
 
@@ -75,8 +83,7 @@ library Secp256k1 {
      *      considered more efficient when doing multiple point additions at a time). The additional gas cost of
      *      storing the projective `Z` coordinate in storage is higher than the additional cost of the extra arithmetic
      *      from using affine coordinates. Note that we optimize the computation to do as few `_divmod`s as possible
-     *      (one per operation), as that is by far the most expensive computation (~200 gas for the `modexp` precompile
-     *      call).
+     *      (one per operation), as that is by far the most expensive computation (the `modexp` precompile call).
      */
     function add(Point memory p, Point memory q) internal view returns (Point memory r) {
         (uint256 px, uint256 py) = _unpack(p);
@@ -85,10 +92,14 @@ library Secp256k1 {
         uint256 l;
         if (px | py == 0) {
             // `P` is the point at infinity, and `0 + Q = Q`.
-            return q;
+            r.x = qx;
+            r.y = qy;
+            return r;
         } else if (qx | qy == 0) {
             // `Q` is the point at infinity, and `P + 0 = P`.
-            return p;
+            r.x = px;
+            r.y = py;
+            return r;
         } else if (px != qx) {
             // Point addition, compute the slope through `P` and `Q`:
             //     λ = (Qy - Py) / (Qx - Px)
@@ -104,7 +115,7 @@ library Secp256k1 {
                 l = _divmod(mulmod(3, mulmod(px, px, P), P), addmod(py, py, P), P);
             }
         } else {
-            // This branch happens iff `P = -P` in which case their sum is the point at infinity (represented by the
+            // This branch happens iff `P = -Q` in which case their sum is the point at infinity (represented by the
             // 0-value) that `r` is initialized with.
             return r;
         }
@@ -132,17 +143,19 @@ library Secp256k1 {
      * @param r The expected result point R (witness).
      * @dev See <https://ethresear.ch/t/you-can-kinda-abuse-ecrecover-to-do-ecmul-in-secp256k1-today/2384> This
      *      function uses a trick to abuse the `ecrecover` precompile in order to compute a mul-mul-add operation of
-     *      `-z` times the curve generator point plus `e` time the point `P` defined by the coordinates `Px` and `Py`.
+     *      `-z` times the curve generator point plus `e` times the point `P` defined by the coordinates `Px` and `Py`.
      *      The caveat with this trick is that it doesn't return the resulting point, but a public address (which is a
      *      truncated hash of the resulting point's coordinates, and why we require a witness `r` instead of just
-     *      returning a result). Additionally, it only supports points `P` with x-coordinates that are elements in Fn.
-     *      In practice (assuming uniform distribution of x-coordinates), this happens for roughly one in every 3.7e39
-     *      points and is negligible.
+     *      returning a result). Additionally, the trick has requirements on its inputs: `e` must be non-zero modulo
+     *      `N`, neither `P` nor `R` may be the point at infinity, and `Px` must be an element in Fn (this excludes
+     *      otherwise valid curve points with `N <= Px < P`, which occur with negligible probability
+     *      `(P - N) / P ≈ 3.7e-39` assuming uniformly distributed x-coordinates).
      */
     function mulmuladd(uint256 z, uint256 e, Point memory p, Point memory r) internal view {
-        (uint256 px, uint256 py) = _unpack(p);
-        (uint256 rx, uint256 ry) = _unpack(r);
-        bool valid;
+        (uint256 px, uint256 py) = _unpackNonZero(p);
+        (uint256 rx, uint256 ry) = _unpackNonZero(r);
+
+        address minusR;
         assembly ("memory-safe") {
             // Perform `ecrecover(z * Px, v, Px, e * Px) = address(-R)`
             let ptr := mload(0x40)
@@ -150,9 +163,12 @@ library Secp256k1 {
             mstore(add(ptr, 0x20), add(and(py, 1), 27))
             mstore(add(ptr, 0x40), px)
             mstore(add(ptr, 0x60), mulmod(e, px, N))
-            let minusR :=
-                mul(mload(0x00), and(eq(returndatasize(), 0x20), staticcall(gas(), 0x1, ptr, 0x80, 0x00, 0x20)))
+            minusR := mul(mload(0x00), and(eq(returndatasize(), 0x20), staticcall(gas(), 0x1, ptr, 0x80, 0x00, 0x20)))
+        }
+        require(minusR != address(0), UnsupportedMulMulAddInput());
 
+        bool valid;
+        assembly ("memory-safe") {
             // Compute `address(-R)` from the provided witness `r` and check it matches the result of the `ecrecover`
             // operation.
             mstore(0x00, rx)
@@ -233,9 +249,23 @@ library Secp256k1 {
     }
 
     /**
+     * @notice Unpacks a point and validates it is a non-zero point on the curve.
+     * @param p The point to unpack.
+     * @return x The x-coordinate.
+     * @return y The y-coordinate.
+     * @dev Unlike `_unpack`, the point at infinity is rejected, as it is represented by the 0-value which does not
+     *      satisfy the curve equation.
+     */
+    function _unpackNonZero(Point memory p) private pure returns (uint256 x, uint256 y) {
+        x = p.x;
+        y = p.y;
+        require(_satisfiesCurveEquation(x, y), NotOnCurve());
+    }
+
+    /**
      * @notice Computes division in a prime field using Fermat's little theorem.
      * @param x The dividend.
-     * @param y The divisor.
+     * @param y The divisor; must be non-zero.
      * @param p The prime modulus.
      * @return result The result of x / y mod p.
      * @dev Division in a prime field is defined as multiplication by the divisor's multiplicative inverse. The most
@@ -256,7 +286,13 @@ library Secp256k1 {
             mstore(add(ptr, 0x60), y)
             mstore(add(ptr, 0x80), sub(p, 2))
             mstore(add(ptr, 0xa0), p)
-            success := and(eq(returndatasize(), 0x20), staticcall(gas(), 0x5, ptr, 0xc0, 0x00, 0x20))
+            success := and(
+                and(eq(returndatasize(), 0x20), staticcall(gas(), 0x5, ptr, 0xc0, 0x00, 0x20)),
+                // Fermat's little theorem only defines an inverse for a non-zero `y`. Ensure that the value of the
+                // divisor is non-zero. We do not try to optimize by skipping the precompile call in case `y` is zero
+                // since it is the responsibility of the caller to ensure that this condition holds.
+                iszero(iszero(y))
+            )
 
             // Compute `x / y = x * inv(y)`.
             result := mulmod(x, mload(0x00), p)

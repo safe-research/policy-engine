@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 /**
  * @title SignatureExtension
  * @notice A reusable format for appending typed, variable-length data after a Safe's owner signatures.
- * @dev Vendored from `safe-research/safenet` at `5de7e86900b27844d00458d8dc85cbaa0d27f2ea`,
+ * @dev Vendored from `safe-research/safenet` at `4ed51011b4ff2dbc2a406b7366ef311725ac5938`,
  *      `contracts/src/libraries/SignatureExtension.sol`. The body is verbatim; only this note and
  *      the licence header differ, which `npm run vendor:check` enforces.
  *

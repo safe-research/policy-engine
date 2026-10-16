@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity ^0.8.30;
-// Vendored from `safe-research/safenet` at `5de7e86900b27844d00458d8dc85cbaa0d27f2ea`,
+// Vendored from `safe-research/safenet` at `4ed51011b4ff2dbc2a406b7366ef311725ac5938`,
 // `contracts/src/libraries/EpochRollover.sol`. Only the licence header and the `@/libraries/`
 // import alias differ; `npm run vendor:check` enforces that.
 
