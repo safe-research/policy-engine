@@ -1,4 +1,4 @@
-import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
+import { loadFixture, time } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
@@ -10,9 +10,16 @@ import {
   execTransaction,
   randomAddress,
   randomSelector,
-  createConfiguration
+  createConfiguration,
+  getConfigurationRoot
 } from '../src/utils'
-import { deployAllowPolicy, deploySafeContracts, deploySafePolicyGuard, deployMockPolicy } from './deploy'
+import {
+  deployAllowPolicy,
+  deployDenyPolicy,
+  deploySafeContracts,
+  deploySafePolicyGuard,
+  deployMockPolicy
+} from './deploy'
 
 describe('PolicyEngine Edge Cases', function () {
   async function fixture() {
@@ -182,6 +189,54 @@ describe('PolicyEngine Edge Cases', function () {
 
       // The policy should be the Zero Address now (cleared)
       expect(retrievedPolicy).to.equal(ZeroAddress)
+    })
+
+    it('Should resolve a cleared exact entry through the fallback', async function () {
+      const { owner, safe, safePolicyGuard, accessSelector } = await loadFixture(fixture)
+      const { allowPolicy } = await deployAllowPolicy()
+      const { denyPolicy } = await deployDenyPolicy()
+      const target = randomAddress()
+
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({ policy: await allowPolicy.getAddress() }),
+          createConfiguration({ target, policy: await denyPolicy.getAddress() })
+        ]
+      })
+      await expect(execTransaction({ owners: [owner], safe, to: target }))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'AccessDenied')
+        .withArgs(await denyPolicy.getAddress())
+
+      // Clearing removes the entry rather than denying, so the permissive fallback applies again.
+      const clearConfiguration = [createConfiguration({ target, policy: ZeroAddress })]
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('requestConfiguration', [
+          getConfigurationRoot(clearConfiguration)
+        ])
+      })
+      await time.increase(await safePolicyGuard.DELAY())
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [clearConfiguration])
+      })
+
+      const [access, policy] = await safePolicyGuard.getPolicy(
+        await safe.getAddress(),
+        target,
+        '0x',
+        SafeOperation.Call
+      )
+      expect(access).to.equal(await accessSelector.createFallback(SafeOperation.Call))
+      expect(policy).to.equal(await allowPolicy.getAddress())
+      await expect(execTransaction({ owners: [owner], safe, to: target })).to.not.be.reverted
     })
   })
 

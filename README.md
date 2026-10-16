@@ -100,6 +100,8 @@ A policy decides on the transaction tuple the guard hands it. In the cases below
 
 Allowlist and grant state is namespaced by `(policy guard, safe)`, so a policy contract is shared across Safes without them interfering. Single-use grants are spent during the pre-execution check, which is why the guard's atomicity requirements (`safeTxGas == 0`, and the after-execution hooks) matter: a failed execution rolls the spend back with it.
 
+`CoSignerPolicy` takes the co-signature from the policy context and checks it against the Safe transaction hash of the checked call, rebuilt with every gas and refund field zero. Under `MultiSendPolicy` that is each sub-transaction's own hash at the batch's nonce, not the hash of the batch. A co-signer without code signs that hash directly: 65 bytes `r, s, v`, with `v` 27 or 28 and a low `s`. A co-signer with code is checked through ERC-1271, with the context passed as the signature. Safe's other owner signature encodings (`eth_sign`, approved hash, contract signature) are not accepted and fail with `Unauthorized()`, the same error as a wrong signer.
+
 ### Access Selectors
 
 The policy to enforce is chosen based on an _access selectors_. These are similar to [external function pointers](https://docs.soliditylang.org/en/latest/types.html#function-types) with a slightly different representation, and also encoding the Safe `operation` kind (`CALL` or `DELEGATECALL`). The layout of an access selector in an EVM word is:
@@ -136,6 +138,8 @@ The core contract for access control for Safe transactions. Some opinionated des
 * All transactions are enforced equally regardless of authorization mechanism; this means that a module does not have special permissions compared to a regular transaction signed by users. This ensures that, regardless of the Safe setup, policies will always be respected, thus reducing the attack surface that can be leveraged by sophisticated threat actors (for example social engineering of allowance module signers instead of the Safe signers themselves)
 * Transactions are denied by default; this requires that policies be created for allowed transactions instead of selectively disallowing transactions. While this adds UX friction at setup time, it makes the system as a whole more secure and easy to reason about
 * Fallback policy; this allows use-cases of the kind "allow these transactions, and defer to an off-chain co-signer for all other transactions"
+
+Setting an exact entry's policy to `address(0)` removes the entry. It does not deny matching calls: they resolve through the operation fallback again. To deny them whatever the fallback allows, configure [`DenyPolicy`](./contracts/policies/DenyPolicy.sol) on the exact entry.
 
 ### Safe Policy Guard
 
@@ -175,9 +179,12 @@ Two things to check when hardening an existing Safe:
 
 To remove a guard, instead of baking in the delay mechanism within the guard contract, we use the delay mechanism which is already present for any policy to get activated. To remove a guard:
 - We `requestConfiguration(...)` with the `configureRoot` as the data with [AllowPolicy](./contracts/policies/AllowPolicy.sol) and selector as `setGuard(...)`, target as Safe itself, and operation as `CALL`
-- Once the delay is over, we can apply the policy using `applyConfiguration(...)` and also remove the Guard (we can use MultiSend for the same to do in a single transaction).
+- Once the delay is over, we apply the policy using `applyConfiguration(...)` in a transaction of its own.
+- In a later transaction, we remove the guard with `setGuard(address(0))`.
 
-Removing the module guard works the same way, with `setModuleGuard(...)` as the selector. Remove **both** if the intent is to uninstall the policy engine; removing only one leaves the Safe partly guarded rather than unguarded.
+The last two steps cannot share a batch under [MultiSendPolicy](./contracts/policies/MultiSendPolicy.sol): it checks every sub-transaction before any of them runs, so `setGuard` is checked against the configuration from before `applyConfiguration` and is denied unless an existing policy already allows it.
+
+Removing the module guard works the same way, with `setModuleGuard(...)` as the selector. Remove **both** if the intent is to uninstall the policy engine; removing only one leaves the Safe partly guarded rather than unguarded. Both policies can be applied together. With `multiSend` under `MultiSendPolicy`, the later transaction can then call `setGuard(address(0))` and `setModuleGuard(address(0))` in one batch.
 
 Note: If the Safe reactivates the guard, this policy should be removed. This needs `configureImmediately(...)` while no guard is installed — once either guard is set, `configureImmediately` reverts `GuardAlreadyEnabled` and the delay applies.
 

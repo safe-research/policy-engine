@@ -22,7 +22,7 @@ contract SafePolicyGuard is PolicyEngine, ISafeModuleGuard, ISafeTransactionGuar
      * @custom:member target The target address for the policy.
      * @custom:member selector The selector for the policy.
      * @custom:member operation The operation for the policy.
-     * @custom:member policy The policy address.
+     * @custom:member policy The policy address. Zero removes the entry, so the operation fallback applies, if any.
      * @custom:member data The data for the policy.
      */
     struct Configuration {
