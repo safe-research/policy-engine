@@ -94,16 +94,17 @@ interface ISafe {
     function setModuleGuard(address moduleGuard) external;
 
     /**
-     * @notice Reads `length` bytes of storage in the current contract
+     * @notice Reads `length` 32-byte words of storage in the current contract
      * @param offset - the offset in the current contract's storage in words to start reading from
      * @param length - the number of words (32 bytes) of data to read
      * @return the bytes that were read.
      */
     function getStorageAt(uint256 offset, uint256 length) external view returns (bytes memory);
 
-    /** @notice Executes a `operation` {0: Call, 1: DelegateCall}} transaction to `to` with `value` (Native Currency)
-     *          and pays `gasPrice` * `gasLimit` in `gasToken` token to `refundReceiver`.
-     * @dev The fees are always transferred, even if the user transaction fails.
+    /** @notice Executes an `operation` {0: Call, 1: DelegateCall} transaction to `to` with `value` (Native Currency).
+     * @dev Pays a refund only if `gasPrice > 0`: `(gasUsed + baseGas) * gasPrice` in `gasToken` to
+     *      `refundReceiver` (or `tx.origin`), even if execution fails. A zero `gasToken` pays ETH, with
+     *      `gasPrice` capped at `tx.gasprice`.
      *      This method doesn't perform any sanity check of the transaction, such as:
      *      - if the contract at `to` address has code or not
      *      - if the `gasToken` is a contract or not

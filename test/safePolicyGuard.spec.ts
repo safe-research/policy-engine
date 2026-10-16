@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
 
-import { SEVEN_DAYS_IN_SECONDS } from '../lib/constants'
+import { MODULE_GUARD_STORAGE_SLOT, SEVEN_DAYS_IN_SECONDS } from '../lib/constants'
 import {
   buildMultiSendSafeTx,
   buildSafeTransaction,
@@ -17,7 +17,13 @@ import {
   randomAddress,
   SafeOperation
 } from '../src/utils'
-import { deployAllowPolicy, deployAllowedModulePolicy, deployOneTimeAllowPolicy, deploySafeContracts } from './deploy'
+import {
+  deployAllowPolicy,
+  deployAllowedModulePolicy,
+  deployMultiSendPolicy,
+  deployOneTimeAllowPolicy,
+  deploySafeContracts
+} from './deploy'
 import { safePolicyGuardFixture as fixture } from './fixtures'
 
 describe('SafePolicyGuard -- interface surface and guard entries', function () {
@@ -193,11 +199,13 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
   })
 
   describe('Guard removal', function () {
-    it('Should remove the guard after the delay via a single batch', async function () {
-      // The documented flow: request an AllowPolicy for `setGuard`, wait out the delay, then apply
-      // it and remove the guard in one MultiSend.
-      const { owner, safePolicyGuard, safe, delay } = await loadFixture(fixture)
+    // Both guards installed, `multiSend` under MultiSendPolicy so batch contents are checked, and a
+    // matured configuration allowing `setGuard` and `setModuleGuard` waiting to be applied.
+    async function removalFixture() {
+      const base = await loadFixture(fixture)
+      const { owner, safePolicyGuard, safe, delay } = base
       const { allowPolicy } = await deployAllowPolicy()
+      const { multiSendPolicy } = await deployMultiSendPolicy()
       const { multiSend } = await deploySafeContracts()
 
       await enableGuard({
@@ -209,15 +217,21 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
             target: await multiSend.getAddress(),
             selector: multiSend.interface.getFunction('multiSend')?.selector,
             operation: SafeOperation.DelegateCall,
-            policy: await allowPolicy.getAddress()
+            policy: await multiSendPolicy.getAddress()
           })
-        ]
+        ],
+        moduleGuard: true
       })
 
       const configurations = [
         createConfiguration({
           target: await safe.getAddress(),
           selector: safe.interface.getFunction('setGuard')?.selector,
+          policy: await allowPolicy.getAddress()
+        }),
+        createConfiguration({
+          target: await safe.getAddress(),
+          selector: safe.interface.getFunction('setModuleGuard')?.selector,
           policy: await allowPolicy.getAddress()
         })
       ]
@@ -231,6 +245,14 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
         ])
       })
       await time.increase(delay)
+
+      return { ...base, multiSend, multiSendPolicy, configurations }
+    }
+
+    it('Should reject applying the removal and removing the guard in one batch', async function () {
+      // The batch is checked before it runs, so `setGuard` is checked against the configuration
+      // from before `applyConfiguration`, which has no policy for it.
+      const { owner, safePolicyGuard, safe, multiSend, multiSendPolicy, configurations } = await removalFixture()
 
       const batch = await buildMultiSendSafeTx(
         multiSend,
@@ -249,6 +271,51 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
         await safe.nonce()
       )
 
+      await expect(
+        execTransaction({
+          owners: [owner],
+          safe,
+          to: await multiSend.getAddress(),
+          data: batch.data,
+          operation: SafeOperation.DelegateCall
+        })
+      )
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await multiSendPolicy.getAddress(),
+          safePolicyGuard.interface.encodeErrorResult('AccessDenied', [ZeroAddress])
+        )
+
+      expect(await getGuard(safe)).to.equal(await safePolicyGuard.getAddress())
+    })
+
+    it('Should remove both guards in a later transaction once the removal is applied', async function () {
+      const { owner, safePolicyGuard, safe, multiSend, configurations } = await removalFixture()
+
+      await execTransaction({
+        owners: [owner],
+        safe,
+        to: await safePolicyGuard.getAddress(),
+        data: safePolicyGuard.interface.encodeFunctionData('applyConfiguration', [configurations])
+      })
+
+      const batch = await buildMultiSendSafeTx(
+        multiSend,
+        [
+          buildSafeTransaction({
+            to: await safe.getAddress(),
+            data: safe.interface.encodeFunctionData('setGuard', [ZeroAddress]),
+            nonce: 0
+          }),
+          buildSafeTransaction({
+            to: await safe.getAddress(),
+            data: safe.interface.encodeFunctionData('setModuleGuard', [ZeroAddress]),
+            nonce: 1
+          })
+        ],
+        await safe.nonce()
+      )
+
       await execTransaction({
         owners: [owner],
         safe,
@@ -258,6 +325,8 @@ describe('SafePolicyGuard -- interface surface and guard entries', function () {
       })
 
       expect(await getGuard(safe)).to.equal(ZeroAddress)
+      const moduleGuard = ethers.dataSlice(await safe.getStorageAt(MODULE_GUARD_STORAGE_SLOT, 1), 12)
+      expect(ethers.getAddress(moduleGuard)).to.equal(ZeroAddress)
     })
   })
   describe('Guard as a transaction target', function () {

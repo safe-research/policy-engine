@@ -60,7 +60,7 @@ library AccessSelector {
     /**
      * @dev Extracts the operation type from an access selector
      * @param self The access selector
-     * @return The operation type (OP_CALL or OP_DELEGATECALL)
+     * @return The operation type (Operation.CALL or Operation.DELEGATECALL)
      */
     function getOperation(T self) internal pure returns (Operation) {
         return Operation((T.unwrap(self) >> 216) & 1);

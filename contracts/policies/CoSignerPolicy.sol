@@ -9,6 +9,11 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 /**
  * @title Co-Signer Policy
  * @dev Ensure a Safe transaction has been co-signed.
+ * @dev The co-signature is the policy context, checked against the Safe transaction hash rebuilt
+ *      from the checked call with zero gas and refund fields (in a batch, each sub-transaction's
+ *      own). A co-signer without code signs that hash directly: 65 bytes `r, s, v` with `v` 27 or 28
+ *      and a low `s`. A co-signer with code is checked through ERC-1271, with the context as the
+ *      signature. Safe's `eth_sign`, approved-hash and contract signature encodings are not accepted.
  * @dev Transaction path only: the `nonce() - 1` below assumes the nonce increment that
  *      `execTransactionFromModule` never performs, so no co-signature can validate on the module
  *      path. It fails closed, but do not rely on this policy to gate module transactions.
@@ -31,7 +36,6 @@ contract CoSignerPolicy is IPolicy {
     mapping(address policyGuard => mapping(address safe => mapping(bytes32 safeTxHash => bool spent))) private $spent;
 
     error Unauthorized();
-    error InvalidSelector();
     error NoCosignerConfigured();
 
     /**
