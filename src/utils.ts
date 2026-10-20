@@ -95,6 +95,62 @@ export const EIP712_SAFE_TX_TYPE = {
 }
 
 /**
+ * The module transaction `CoSignerPolicy` keys approvals by: the EIP-712 struct hash of this type,
+ * with no nonce, since the policy has to re-derive it from the transaction alone. Mirrors the
+ * policy's `_MODULE_TRANSACTION_TYPEHASH`.
+ */
+export const EIP712_MODULE_TRANSACTION_TYPE = {
+  // "ModuleTransaction(address policyGuard,address safe,address module,address to,uint256 value,bytes data,uint8 operation)"
+  ModuleTransaction: [
+    { type: 'address', name: 'policyGuard' },
+    { type: 'address', name: 'safe' },
+    { type: 'address', name: 'module' },
+    { type: 'address', name: 'to' },
+    { type: 'uint256', name: 'value' },
+    { type: 'bytes', name: 'data' },
+    { type: 'uint8', name: 'operation' }
+  ]
+}
+
+/**
+ * What a co-signer actually signs for `CoSignerPolicy.approveModuleTransactionWithSignature`, in
+ * the policy's own EIP-712 domain (`chainId` and the policy address): a number of uses of one module
+ * transaction, under an unordered nonce the co-signer picks and the policy burns on relay. Mirrors
+ * the policy's `_MODULE_TRANSACTION_APPROVAL_TYPEHASH`.
+ */
+export const EIP712_MODULE_TRANSACTION_APPROVAL_TYPE = {
+  // "ModuleTransactionApproval(bytes32 moduleTxHash,uint256 uses,uint256 nonce)"
+  ModuleTransactionApproval: [
+    { type: 'bytes32', name: 'moduleTxHash' },
+    { type: 'uint256', name: 'uses' },
+    { type: 'uint256', name: 'nonce' }
+  ]
+}
+
+export type ModuleTransaction = {
+  policyGuard: string
+  safe: string
+  module: string
+  to: string
+  value: BigNumberish
+  data: BytesLike
+  operation: SafeOperation
+}
+
+export type ModuleTransactionApproval = {
+  moduleTxHash: BytesLike
+  uses: BigNumberish
+  nonce: BigNumberish
+}
+
+/**
+ * The `moduleTxHash` of a module transaction, as `CoSignerPolicy.getModuleTransactionHash` derives it.
+ */
+export function hashModuleTransaction(moduleTx: ModuleTransaction): string {
+  return ethers.TypedDataEncoder.hashStruct('ModuleTransaction', EIP712_MODULE_TRANSACTION_TYPE, moduleTx)
+}
+
+/**
  * The `SignatureExtension` type hash carrying policy context, mirroring
  * `SafePolicyGuard._CONTEXT_TYPE_HASH`.
  */
@@ -597,6 +653,31 @@ export const safeSignTypedData = async (
   return {
     signer: signerAddress,
     data: await signer.signTypedData({ verifyingContract: safeAddress, chainId: cid }, EIP712_SAFE_TX_TYPE, safeTx)
+  }
+}
+
+/**
+ * Signs a module transaction approval for `CoSignerPolicy`, as the co-signer does off-chain before
+ * anyone relays the signature to `approveModuleTransactionWithSignature`.
+ * @param signer The co-signer.
+ * @param policyAddress The `CoSignerPolicy` deployment, which is the EIP-712 verifying contract.
+ * @param approval The module transaction hash, the number of uses granted and a fresh nonce.
+ */
+export const signModuleTransactionApproval = async (
+  signer: Signer,
+  policyAddress: string,
+  approval: ModuleTransactionApproval,
+  chainId?: BigNumberish
+): Promise<SafeSignature> => {
+  if (!chainId && !signer.provider) throw Error('Provider required to retrieve chainId')
+  const cid = chainId || (await signer.provider!.getNetwork()).chainId
+  return {
+    signer: await signer.getAddress(),
+    data: await signer.signTypedData(
+      { verifyingContract: policyAddress, chainId: cid },
+      EIP712_MODULE_TRANSACTION_APPROVAL_TYPE,
+      approval
+    )
   }
 }
 

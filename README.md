@@ -70,7 +70,7 @@ These are known and deliberate. All of them fail closed — they deny or revert 
 * **A transaction carrying 1–3 bytes of calldata is always rejected** with `InvalidSelector`, because no function selector can be decoded from it. Empty calldata is fine and decodes to the zero selector.
 * **The fallback key is indistinguishable from a real access selector for `address(0)`.** `create(address(0), bytes4(0), operation)` and `createFallback(operation)` are the same value, so a plain value transfer to `address(0)` resolves to the catch-all policy. A fallback policy therefore also authorizes burning value to the zero address.
 * **`MultiSendPolicy` pairs contexts with sub-transactions positionally** and yields an empty context once the supplied list is exhausted. A batch cannot give context to only its last sub-transaction without padding the earlier ones.
-* **A batch cannot repeat an identical signature-checked sub-transaction.** `MultiSendPolicy` checks every occurrence separately, and each derives the same hash, so one signature would otherwise authorize all of them. `CoSignerPolicy`, `IncreasedThresholdPolicy` and `SafenetPolicy` therefore spend what they verify. Repeat the action by varying it, or by splitting it across nonces.
+* **A batch cannot repeat an identical signature-checked sub-transaction.** `MultiSendPolicy` checks every occurrence separately, and each derives the same hash, so one signature would otherwise authorize all of them. `CoSignerPolicy`, `IncreasedThresholdPolicy` and `SafenetPolicy` therefore spend what they verify. Repeat the action by varying it, or by splitting it across nonces. The module path of `CoSignerPolicy` is not affected: there every occurrence spends one of the uses the co-signer granted.
 
 #### Where the check and the execution can diverge
 
@@ -93,11 +93,26 @@ A policy decides on the transaction tuple the guard hands it. In the cases below
 | [`ERC20TransferPolicy`](./contracts/policies/ERC20TransferPolicy.sol) | Restricts ERC-20 transfer recipients to an allowlist, open-ended or single-use. |
 | [`ERC20ApprovePolicy`](./contracts/policies/ERC20ApprovePolicy.sol) | Restricts ERC-20 approval spenders to an allowlist, open-ended or single-use. Revoking an allowance is always permitted. |
 | [`MultiSendPolicy`](./contracts/policies/MultiSendPolicy.sol) | Applies the Safe's policies to each sub-transaction of a `multiSend` batch. |
-| [`CoSignerPolicy`](./contracts/policies/CoSignerPolicy.sol) | Requires a co-signature over the transaction, spent on use. Transaction path only. |
+| [`CoSignerPolicy`](./contracts/policies/CoSignerPolicy.sol) | Requires a co-signature over the transaction, spent on use. On the module path, spends a use the co-signer granted ahead of time for that exact module transaction, in any order. |
 | [`IncreasedThresholdPolicy`](./contracts/policies/IncreasedThresholdPolicy.sol) | Requires more owner signatures than the Safe's threshold, spent on use. Transaction path only. |
 | [`SafenetPolicy`](./contracts/policies/SafenetPolicy.sol) | Requires a [Safenet](https://github.com/safe-research/safenet) FROST threshold-signature attestation. Transaction path only. |
 
 Allowlist and grant state is namespaced by `(policy guard, safe)`, so a policy contract is shared across Safes without them interfering. Single-use grants are spent during the pre-execution check, which is why the guard's atomicity requirements (`safeTxGas == 0`, and the after-execution hooks) matter: a failed execution rolls the spend back with it.
+
+`CoSignerPolicy` works on both paths, but not in the same way.
+
+On the transaction path the co-signer signs the Safe transaction hash. The signature is passed in the context and checked against the hash at `nonce() - 1`.
+
+On the module path there is no context and the Safe nonce does not change, so the co-signer approves the transaction in advance instead. A module transaction is identified by `getModuleTransactionHash`, which hashes the policy guard, the Safe, the module and the transaction itself. The policy recomputes this hash when the module executes, so it cannot contain a nonce. As a result approvals are not ordered: an approved transaction can run at any time, two identical transactions share the same approval, and every execution spends one use.
+
+A co-signer can approve in two ways:
+
+* Call `approveModuleTransaction` directly. A Safe co-signer does this with an ordinary Safe transaction.
+* Sign `getModuleTransactionApprovalHash` off-chain and let anyone submit the signature with `approveModuleTransactionWithSignature`. The signed message includes a nonce chosen by the co-signer, which can only be used once.
+
+Approvals do not expire. Unspent uses stay valid until the co-signer calls `revokeModuleTransaction`. A signature that was never submitted stays valid until the co-signer calls `invalidateApprovalNonce` with its nonce.
+
+The signed message uses the policy's own EIP-712 domain, not the Safe's. A Safe transaction hash that a co-signer signed earlier can therefore never be used as a module approval.
 
 ### Access Selectors
 
