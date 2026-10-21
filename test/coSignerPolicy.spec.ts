@@ -1,4 +1,5 @@
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
+import SignMessageLibArtifact from '@safe-global/safe-smart-account/build/artifacts/contracts/libraries/SignMessageLib.sol/SignMessageLib.json'
 import { expect } from 'chai'
 import { ZeroAddress } from 'ethers'
 import { ethers } from 'hardhat'
@@ -6,16 +7,25 @@ import { ethers } from 'hardhat'
 import {
   buildMultiSendSafeTx,
   buildSafeTransaction,
+  calculateSafeMessageHash,
   createConfiguration,
   createSafe,
   enableGuard,
   encodeCoSignerConfig,
   execTransaction,
+  randomAddress,
   safeSignTypedData,
   SafeOperation,
   TransactionParametersWithNonce
 } from '../src/utils'
-import { deploySafeContracts, deploySafePolicyGuard, deployCoSignerPolicy, deployMultiSendPolicy } from './deploy'
+import { TestModule } from '../typechain-types'
+import {
+  deploySafeContracts,
+  deploySafePolicyGuard,
+  deployAllowPolicy,
+  deployCoSignerPolicy,
+  deployMultiSendPolicy
+} from './deploy'
 
 describe('CoSignerPolicy', function () {
   async function fixture() {
@@ -25,7 +35,12 @@ describe('CoSignerPolicy', function () {
     const { safePolicyGuard } = await deploySafePolicyGuard()
 
     // Deploy the Safe contracts
-    const { safeProxyFactory, safe: safeSingleton, multiSend } = await deploySafeContracts()
+    const {
+      safeProxyFactory,
+      safe: safeSingleton,
+      multiSend,
+      compatibilityFallbackHandler
+    } = await deploySafeContracts()
     const safe = await createSafe({
       owners: [owner],
       guard: ZeroAddress, // No guard at this point
@@ -40,6 +55,9 @@ describe('CoSignerPolicy', function () {
     // Deploy MultiSendPolicy contract
     const { multiSendPolicy } = await deployMultiSendPolicy()
 
+    // Deploy AllowPolicy contract
+    const { allowPolicy } = await deployAllowPolicy()
+
     // Fund the Safe with some ETH
     await owner.sendTransaction({
       to: await safe.getAddress(),
@@ -53,10 +71,14 @@ describe('CoSignerPolicy', function () {
       recipient,
       other,
       safe,
+      safeProxyFactory,
+      safeSingleton,
+      compatibilityFallbackHandler,
       safePolicyGuard,
       coSignerPolicy,
       multiSend,
-      multiSendPolicy
+      multiSendPolicy,
+      allowPolicy
     }
   }
 
@@ -451,6 +473,121 @@ describe('CoSignerPolicy', function () {
       })
 
       expect(await coSignerPolicy.isCoSignatureSpent(safePolicyGuard, safe, safeTxHash)).to.equal(true)
+    })
+  })
+
+  describe('Module path', function () {
+    it('Should reject the module transaction path', async function () {
+      const { safe, coSignerPolicy } = await loadFixture(fixture)
+      await expect(
+        coSignerPolicy.checkTransaction(safe, randomAddress(), 0n, '0x', SafeOperation.Call, randomAddress(), '0x', 0n)
+      ).to.be.revertedWithCustomError(coSignerPolicy, 'ModulePathUnsupported')
+    })
+
+    it('Should not let a module reuse a pre-approval', async function () {
+      const {
+        owner,
+        cosigner,
+        recipient,
+        other,
+        safe,
+        safeProxyFactory,
+        safeSingleton,
+        compatibilityFallbackHandler,
+        safePolicyGuard,
+        coSignerPolicy,
+        allowPolicy
+      } = await loadFixture(fixture)
+      const safeAddress = await safe.getAddress()
+      const recipientAddress = await recipient.getAddress()
+      const amount = ethers.parseEther('1')
+      const { chainId } = await ethers.provider.getNetwork()
+
+      // The co-signer is itself a Safe, owned by `cosigner`.
+      const cosignerSafe = await createSafe({
+        owners: [cosigner],
+        guard: ZeroAddress,
+        saltNonce: BigInt(0x7),
+        fallbackHandler: await compatibilityFallbackHandler.getAddress(),
+        safeProxyFactory,
+        singleton: safeSingleton
+      })
+      const cosignerSafeAddress = await cosignerSafe.getAddress()
+      const signMessageLib = await (
+        await ethers.getContractFactory(SignMessageLibArtifact.abi, SignMessageLibArtifact.bytecode)
+      ).deploy()
+      const testModule = (await (await ethers.getContractFactory('TestModule')).deploy()) as unknown as TestModule
+
+      // Transfers to `recipient` require the co-signer Safe. Transfers to `other` are always
+      // allowed, so the Safe can execute an unrelated owner transaction at any nonce. The module
+      // is enabled and the guard is installed on both paths.
+      await enableGuard({
+        owners: [owner],
+        safe,
+        safePolicyGuard,
+        configurations: [
+          createConfiguration({
+            target: recipientAddress,
+            policy: await coSignerPolicy.getAddress(),
+            data: encodeCoSignerConfig(cosignerSafeAddress)
+          }),
+          createConfiguration({ target: await other.getAddress(), policy: await allowPolicy.getAddress() })
+        ],
+        module: await testModule.getAddress(),
+        moduleGuard: true
+      })
+
+      // The co-signer Safe pre-approves transaction T for the Safe's current nonce `n`. A Safe
+      // signs using `SignMessageLib.signMessage`, which stores the hash on-chain.
+      const nonce = await safe.nonce()
+      const transfer = buildSafeTransaction({ to: recipientAddress, value: amount, data: '0x', nonce })
+      const safeTxHash = await safe.getTransactionHash(
+        transfer.to!,
+        transfer.value!,
+        transfer.data!,
+        transfer.operation!,
+        transfer.safeTxGas!,
+        transfer.baseGas!,
+        transfer.gasPrice!,
+        transfer.gasToken!,
+        transfer.refundReceiver!,
+        nonce
+      )
+      const message = ethers.AbiCoder.defaultAbiCoder().encode(['bytes32'], [safeTxHash])
+      await execTransaction({
+        owners: [cosigner],
+        safe: cosignerSafe,
+        to: await signMessageLib.getAddress(),
+        data: signMessageLib.interface.encodeFunctionData('signMessage', [message]),
+        operation: SafeOperation.DelegateCall
+      })
+      expect(
+        await cosignerSafe.signedMessages(await calculateSafeMessageHash(cosignerSafeAddress, message, Number(chainId)))
+      ).to.equal(1n)
+      // The pre-approval is valid. Only the module path check keeps it from being used.
+      const erc1271 = new ethers.Contract(
+        cosignerSafeAddress,
+        ['function isValidSignature(bytes32, bytes) view returns (bytes4)'],
+        ethers.provider
+      )
+      expect(await erc1271.isValidSignature(safeTxHash, '0x')).to.equal('0x1626ba7e')
+
+      // An unrelated owner transaction uses nonce `n`. T was never executed, so its pre-approval
+      // is still unspent, and `nonce() - 1` now points at it.
+      await execTransaction({ owners: [owner], safe, to: await other.getAddress() })
+      expect(await safe.nonce()).to.equal(nonce + 1n)
+      expect(await coSignerPolicy.isCoSignatureSpent(safePolicyGuard, safe, safeTxHash)).to.equal(false)
+
+      // `other` is not an owner and holds no approval. It only calls the module.
+      const before = await ethers.provider.getBalance(recipientAddress)
+      await expect(testModule.connect(other).executeTx(safeAddress, recipientAddress, amount, '0x', SafeOperation.Call))
+        .to.be.revertedWithCustomError(safePolicyGuard, 'PolicyReverted')
+        .withArgs(
+          await coSignerPolicy.getAddress(),
+          coSignerPolicy.interface.encodeErrorResult('ModulePathUnsupported', [])
+        )
+      expect(await ethers.provider.getBalance(recipientAddress)).to.equal(before)
+      expect(await coSignerPolicy.isCoSignatureSpent(safePolicyGuard, safe, safeTxHash)).to.equal(false)
     })
   })
 })

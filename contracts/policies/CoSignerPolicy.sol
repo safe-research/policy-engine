@@ -9,9 +9,14 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 /**
  * @title Co-Signer Policy
  * @dev Ensure a Safe transaction has been co-signed.
- * @dev Transaction path only: the `nonce() - 1` below assumes the nonce increment that
- *      `execTransactionFromModule` never performs, so no co-signature can validate on the module
- *      path. It fails closed, but do not rely on this policy to gate module transactions.
+ * @dev Supports Safe transaction path only. Module transactions are rejected with {ModulePathUnsupported} error.
+ *      To verify a co-signature, the policy needs the signature from `context` and the Safe nonce
+ *      to rebuild the signed hash. The module path has neither: `execTransactionFromModule` passes
+ *      no signatures and does not increment the nonce. Without the check, a module transaction
+ *      would make the policy compute the hash of the previous owner transaction instead. That hash
+ *      can still verify if the co-signer is a contract that pre-approved it, for example a Safe
+ *      that used `signMessage`, since its ERC-1271 check accepts an empty signature for such a
+ *      hash. The module would then run that transaction with no new co-signature.
  * @dev Each co-signature is single-use. The hash pins the Safe nonce, but a batch may repeat a
  *      sub-transaction and {MultiSendPolicy} checks each occurrence separately, so one co-signature
  *      would otherwise authorise them all. A batch needing the same action twice must vary it.
@@ -39,16 +44,23 @@ contract CoSignerPolicy is IPolicy {
      */
     error CoSignatureAlreadySpent();
 
+    /**
+     * @notice Error indicating the policy was reached on the module execution path, which is not supported.
+     */
+    error ModulePathUnsupported();
+
     function checkTransaction(
         address safe,
         address to,
         uint256 value,
         bytes calldata data,
         Operation operation,
-        address,
+        address module,
         bytes calldata context,
         AccessSelector.T access
     ) external override returns (bytes4 magicValue) {
+        require(module == address(0), ModulePathUnsupported());
+
         // Compute the Safe transaction hash.
         bytes32 safeTxHash = ISafe(safe).getTransactionHash(
             to,
