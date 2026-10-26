@@ -15,8 +15,9 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
  *      and a low `s`. A co-signer with code is checked through ERC-1271, with the context as the
  *      signature. Safe's `eth_sign`, approved-hash and contract signature encodings are not accepted.
  * @dev Transaction path only: the `nonce() - 1` below assumes the nonce increment that
- *      `execTransactionFromModule` never performs, so no co-signature can validate on the module
- *      path. It fails closed, but do not rely on this policy to gate module transactions.
+ *      `execTransactionFromModule` never performs, so a module transaction would rebuild the
+ *      previous owner transaction's hash, which a contract co-signer may have pre-approved.
+ *      Module transactions are therefore rejected with {ModulePathUnsupported}.
  * @dev Each co-signature is single-use. The hash pins the Safe nonce, but a batch may repeat a
  *      sub-transaction and {MultiSendPolicy} checks each occurrence separately, so one co-signature
  *      would otherwise authorise them all. A batch needing the same action twice must vary it.
@@ -43,16 +44,23 @@ contract CoSignerPolicy is IPolicy {
      */
     error CoSignatureAlreadySpent();
 
+    /**
+     * @notice Error indicating the policy was reached on the module execution path, which is not supported.
+     */
+    error ModulePathUnsupported();
+
     function checkTransaction(
         address safe,
         address to,
         uint256 value,
         bytes calldata data,
         Operation operation,
-        address,
+        address module,
         bytes calldata context,
         AccessSelector.T access
     ) external override returns (bytes4 magicValue) {
+        require(module == address(0), ModulePathUnsupported());
+
         // Compute the Safe transaction hash.
         bytes32 safeTxHash = ISafe(safe).getTransactionHash(
             to,
