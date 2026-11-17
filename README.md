@@ -228,11 +228,12 @@ tests, and is outside the [audited surface](#audits).
 
 ## Audits
 
-Certora audited the contracts in two parts. [audits/audit.md](./audits/audit.md) has the scope, commits
-and findings of each.
+The contracts have had three audits, two by Certora and one by ack3. [audits/audit.md](./audits/audit.md)
+has the scope, commits and findings of each.
 
-- [Policy engine core](./audits/audit.md#audit-1), August 2026
-- [Policies](./audits/audit.md#audit-2), September 2026
+- [Policy engine core](./audits/audit.md#audit-1), Certora, August 2026
+- [Policies](./audits/audit.md#audit-2), Certora, September 2026
+- [Core, policies and vendored Safenet libraries](./audits/audit.md#audit-3), ack3, September 2026, fixes
+  reviewed in November 2026
 
-Neither audit covered `OneTimeAllowPolicy`, the libraries vendored from Safenet (`ConsensusMessages`,
-`EpochRollover`, `FROST` and `Secp256k1`), anything under `contracts/test/`, or the Safe App in `app/`.
+No audit covered `OneTimeAllowPolicy`, anything under `contracts/test/`, or the Safe App in `app/`.
